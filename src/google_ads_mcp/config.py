@@ -4,6 +4,7 @@ import json
 import os
 import re
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -203,6 +204,8 @@ def initialize_config(cli_path: str | None = None) -> Path:
         if not _is_windows():
             path.chmod(0o600)
     except BaseException:
+        with suppress(OSError):
+            os.close(descriptor)
         temporary.unlink(missing_ok=True)
         raise
     return path

@@ -204,7 +204,7 @@ def test_config_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     cli_path = tmp_path / "cli.json"
     assert resolve_config_path(str(cli_path)) == cli_path
     monkeypatch.delenv("GOOGLE_ADS_MCP_CONFIG")
-    assert str(resolve_config_path()).endswith("/.config/google-ads-mcp/accounts.json")
+    assert resolve_config_path().parts[-3:] == (".config", "google-ads-mcp", "accounts.json")
 
 
 @given(st.integers(min_value=0, max_value=9_999_999_999))

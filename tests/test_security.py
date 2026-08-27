@@ -30,7 +30,8 @@ def test_owner_only_regular_file(tmp_path: Path) -> None:
     assert (bool(warnings), os.name) in {(False, "posix"), (True, "nt")}
     directory = tmp_path / "directory"
     directory.mkdir()
-    with pytest.raises(SecurityError, match="regular"):
+    message = "opened securely" if os.name == "nt" else "regular"
+    with pytest.raises(SecurityError, match=message):
         check_owner_only_file(directory, label="test")
     with pytest.raises(SecurityError, match="exist"):
         check_owner_only_file(tmp_path / "missing", label="test")
