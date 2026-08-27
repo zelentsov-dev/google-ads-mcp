@@ -59,10 +59,8 @@ def _owner_only_descriptor(path: Path, *, label: str) -> Generator[tuple[int, li
     if stat.S_ISLNK(path_stat.st_mode):
         raise SecurityError(f"{label} must not be a symbolic link")
     flags = os.O_RDONLY
-    if hasattr(os, "O_CLOEXEC"):
-        flags |= os.O_CLOEXEC
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
     except OSError as exc:

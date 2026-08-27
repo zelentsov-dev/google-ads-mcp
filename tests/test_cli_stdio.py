@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import stat
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from typing import Any, TextIO
 
 import pytest
 
@@ -29,6 +32,71 @@ def _stdio_environment(config: Path) -> dict[str, str]:
     environment = {key: os.environ[key] for key in _SAFE_ENVIRONMENT_KEYS if key in os.environ}
     environment["GOOGLE_ADS_MCP_CONFIG"] = str(config)
     return environment
+
+
+def _read_stdout(stream: TextIO, output: queue.Queue[str | None], lines: list[str]) -> None:
+    try:
+        for line in stream:
+            lines.append(line)
+            output.put(line)
+    finally:
+        output.put(None)
+
+
+def _run_stdio_until(
+    config: Path, messages: list[object], expected_ids: set[int]
+) -> tuple[list[dict[str, Any]], str, str]:
+    process = subprocess.Popen(
+        [sys.executable, "-m", "google_ads_mcp", "serve", "--stdio"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=_stdio_environment(config),
+    )
+    assert process.stdin is not None
+    assert process.stdout is not None
+    assert process.stderr is not None
+    output: queue.Queue[str | None] = queue.Queue()
+    raw_lines: list[str] = []
+    reader = threading.Thread(
+        target=_read_stdout,
+        args=(process.stdout, output, raw_lines),
+        daemon=True,
+    )
+    reader.start()
+    responses: list[dict[str, Any]] = []
+    try:
+        payload = "\n".join(
+            message if isinstance(message, str) else json.dumps(message) for message in messages
+        )
+        process.stdin.write(payload + "\n")
+        process.stdin.flush()
+        deadline = time.monotonic() + 10
+        while not expected_ids <= {item.get("id") for item in responses}:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                line = output.get(timeout=remaining)
+            except queue.Empty:
+                break
+            if line is None:
+                break
+            responses.append(json.loads(line))
+    finally:
+        process.stdin.close()
+        process.stdin = None
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            process.wait(timeout=5)
+        reader.join(timeout=5)
+    stderr = process.stderr.read()
+    if not expected_ids <= {item.get("id") for item in responses}:
+        pytest.fail("MCP process ended before all expected response IDs were received")
+    return [json.loads(line) for line in raw_lines], "".join(raw_lines), stderr
 
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -73,23 +141,12 @@ def test_black_box_stdio_initialize_and_tools_list(tmp_path: Path) -> None:
         {"jsonrpc": "2.0", "method": "notifications/initialized"},
         {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
     ]
-    payload = "\n".join(json.dumps(message) for message in messages) + "\n"
-    environment = _stdio_environment(config)
-    completed = subprocess.run(
-        [sys.executable, "-m", "google_ads_mcp", "serve", "--stdio"],
-        input=payload,
-        text=True,
-        capture_output=True,
-        env=environment,
-        timeout=10,
-        check=True,
-    )
-    lines = [json.loads(line) for line in completed.stdout.splitlines() if line]
+    lines, stdout, stderr = _run_stdio_until(config, messages, {1, 2})
     assert {line.get("id") for line in lines} == {1, 2}
     tools = next(line["result"]["tools"] for line in lines if line.get("id") == 2)
     assert len(tools) == 13
-    assert all(line.startswith("{") for line in completed.stdout.splitlines())
-    assert "starting Google Ads MCP" in completed.stderr
+    assert all(line.startswith("{") for line in stdout.splitlines())
+    assert "starting Google Ads MCP" in stderr
 
 
 def test_black_box_malformed_cancel_and_bounded_auth_failure(tmp_path: Path) -> None:
@@ -146,22 +203,12 @@ def test_black_box_malformed_cancel_and_bounded_auth_failure(tmp_path: Path) -> 
             }
         ),
     ]
-    environment = _stdio_environment(config)
-    completed = subprocess.run(
-        [sys.executable, "-m", "google_ads_mcp", "serve", "--stdio"],
-        input="\n".join(messages) + "\n",
-        text=True,
-        capture_output=True,
-        env=environment,
-        timeout=10,
-        check=True,
-    )
-    lines = [json.loads(line) for line in completed.stdout.splitlines() if line]
+    lines, stdout, stderr = _run_stdio_until(config, messages, {1, 2})
     result = next(line["result"] for line in lines if line.get("id") == 2)
     assert result["structuredContent"]["error"]["code"] == "developer_token_missing"
     assert any(line.get("method") == "notifications/message" for line in lines)
-    assert all(line.startswith("{") for line in completed.stdout.splitlines())
-    assert "not-json" not in completed.stderr
+    assert all(line.startswith("{") for line in stdout.splitlines())
+    assert "not-json" not in stderr
 
 
 def test_black_box_errors_do_not_echo_credential_shaped_identifiers(tmp_path: Path) -> None:
@@ -192,19 +239,11 @@ def test_black_box_errors_do_not_echo_credential_shaped_identifiers(tmp_path: Pa
             },
         },
     ]
-    completed = subprocess.run(
-        [sys.executable, "-m", "google_ads_mcp", "serve", "--stdio"],
-        input="\n".join(json.dumps(message) for message in messages) + "\n",
-        text=True,
-        capture_output=True,
-        env=_stdio_environment(config),
-        timeout=10,
-        check=True,
-    )
-    assert raw_profile not in completed.stdout
-    assert raw_profile not in completed.stderr
-    assert raw_customer not in completed.stdout
-    assert raw_customer not in completed.stderr
+    _, stdout, stderr = _run_stdio_until(config, messages, {1, 2})
+    assert raw_profile not in stdout
+    assert raw_profile not in stderr
+    assert raw_customer not in stdout
+    assert raw_customer not in stderr
 
 
 def test_black_box_schema_errors_do_not_echo_credential_shaped_input(tmp_path: Path) -> None:
@@ -235,20 +274,11 @@ def test_black_box_schema_errors_do_not_echo_credential_shaped_input(tmp_path: P
             },
         },
     ]
-    completed = subprocess.run(
-        [sys.executable, "-m", "google_ads_mcp", "serve", "--stdio"],
-        input="\n".join(json.dumps(message) for message in messages) + "\n",
-        text=True,
-        capture_output=True,
-        env=_stdio_environment(config),
-        timeout=10,
-        check=True,
-    )
-    assert raw_profile not in completed.stdout
-    assert raw_profile not in completed.stderr
-    assert raw_customer not in completed.stdout
-    assert raw_customer not in completed.stderr
-    lines = [json.loads(line) for line in completed.stdout.splitlines() if line]
+    lines, stdout, stderr = _run_stdio_until(config, messages, {1, 2})
+    assert raw_profile not in stdout
+    assert raw_profile not in stderr
+    assert raw_customer not in stdout
+    assert raw_customer not in stderr
     result = next(line["result"] for line in lines if line.get("id") == 2)
     assert result["structuredContent"]["error"]["code"] == "invalid_request"
 

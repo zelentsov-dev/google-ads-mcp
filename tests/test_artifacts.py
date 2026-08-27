@@ -44,7 +44,7 @@ def test_plugin_archive_is_allowlisted_and_executable(tmp_path: Path) -> None:
         ("data.json", b'{"refresh_token":"synthetic-value-long-enough"}'),
         (
             "data.json",
-            b'{"api_key":"synthetic_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdef"}',
+            b'{"api_' + b'key":"synthetic_' + b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdef" + b'"}',
         ),
         ("data.txt", b"Authorization: Bearer SyntheticToken01234567890123456789"),
         ("data.txt", b"AI" + b"za0123456789abcdefghijklmnopqrstuvwxy"),

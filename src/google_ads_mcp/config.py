@@ -191,7 +191,10 @@ def initialize_config(cli_path: str | None = None) -> Path:
     temporary = Path(temporary_name)
     try:
         if not _is_windows():
-            os.fchmod(descriptor, 0o600)
+            fchmod = getattr(os, "fchmod", None)
+            if fchmod is None:
+                raise SecurityError("Unable to secure the temporary configuration file")
+            fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(payload)
             handle.flush()

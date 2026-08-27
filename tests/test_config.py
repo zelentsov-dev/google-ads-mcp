@@ -157,6 +157,17 @@ def test_init_windows_mode_branch(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert initialize_config(str(target)) == target
 
 
+def test_init_requires_descriptor_permission_support(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "accounts.json"
+    monkeypatch.setattr(config_module, "_is_windows", lambda: False)
+    monkeypatch.delattr(os, "fchmod", raising=False)
+    with pytest.raises(SecurityError, match="temporary configuration"):
+        initialize_config(str(target))
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_load_rejects_invalid_json_permissions_and_encoding(tmp_path: Path) -> None:
     path = tmp_path / "accounts.json"
     path.write_text("{")
