@@ -1,0 +1,41 @@
+name: Bug report
+description: Report a sanitized Google Ads MCP problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Never include developer tokens, OAuth material, ADC/YAML contents, private keys, real search terms, ads, or production exports. Use GitHub private vulnerability reporting for security issues.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: Evidence source
+      options:
+        - Synthetic fixture
+        - Test account (sanitized)
+        - Production read-only account (sanitized)
+        - Plugin installation
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Sanitized behavior
+      description: Describe expected and actual behavior without account data or credentials.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I removed credentials, real account content, customer-linked PII, and raw Google response envelopes.
+          required: true

@@ -1,0 +1,14 @@
+interface:
+  display_name: "Google Ads Operator"
+  short_description: "Safe read-only Google Ads analysis"
+  default_prompt: "Use $google-ads-operator to audit a Google Ads account with explicit evidence and no mutations."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "google-ads"
+      description: "Read-only Google Ads MCP server"
+      transport: "stdio"
+
+policy:
+  allow_implicit_invocation: true

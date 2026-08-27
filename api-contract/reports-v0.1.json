@@ -1,0 +1,248 @@
+{
+  "reports": [
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device",
+        "segments.ad_network_type"
+      ],
+      "campaignTypes": [],
+      "description": "Account serving and conversion performance.",
+      "modeledConversions": true,
+      "name": "account_performance",
+      "requiresDateRange": true,
+      "resource": "customer"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device",
+        "segments.ad_network_type",
+        "segments.conversion_action"
+      ],
+      "campaignTypes": [],
+      "description": "Generic performance for every campaign type.",
+      "modeledConversions": true,
+      "name": "campaign_performance",
+      "requiresDateRange": true,
+      "resource": "campaign"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [],
+      "description": "Ad group serving performance.",
+      "modeledConversions": false,
+      "name": "ad_group_performance",
+      "requiresDateRange": true,
+      "resource": "ad_group"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [],
+      "description": "Ad-level serving performance.",
+      "modeledConversions": false,
+      "name": "ad_performance",
+      "requiresDateRange": true,
+      "resource": "ad_group_ad"
+    },
+    {
+      "allowedSegments": [
+        "segments.date"
+      ],
+      "campaignTypes": [],
+      "description": "Asset-level performance where Google exposes it.",
+      "modeledConversions": false,
+      "name": "asset_performance",
+      "requiresDateRange": true,
+      "resource": "campaign_asset"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [],
+      "description": "Campaign criterion serving performance.",
+      "modeledConversions": false,
+      "name": "criteria_performance",
+      "requiresDateRange": true,
+      "resource": "campaign_criterion"
+    },
+    {
+      "allowedSegments": [
+        "segments.date"
+      ],
+      "campaignTypes": [],
+      "description": "Performance segmented by conversion action.",
+      "modeledConversions": true,
+      "name": "conversion_performance",
+      "requiresDateRange": true,
+      "resource": "campaign"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [
+        "SEARCH",
+        "SHOPPING"
+      ],
+      "description": "Search terms for Search and Shopping inventory.",
+      "modeledConversions": false,
+      "name": "search_terms",
+      "requiresDateRange": true,
+      "resource": "search_term_view"
+    },
+    {
+      "allowedSegments": [
+        "segments.date"
+      ],
+      "campaignTypes": [
+        "DISPLAY",
+        "VIDEO",
+        "DEMAND_GEN",
+        "PERFORMANCE_MAX"
+      ],
+      "description": "Automatic placement performance.",
+      "modeledConversions": false,
+      "name": "placements",
+      "requiresDateRange": true,
+      "resource": "group_placement_view"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [
+        "MULTI_CHANNEL"
+      ],
+      "description": "App campaign performance.",
+      "modeledConversions": false,
+      "name": "app_campaign_performance",
+      "requiresDateRange": true,
+      "resource": "campaign"
+    },
+    {
+      "allowedSegments": [
+        "segments.date"
+      ],
+      "campaignTypes": [
+        "PERFORMANCE_MAX"
+      ],
+      "description": "Performance Max asset group inventory and performance.",
+      "modeledConversions": false,
+      "name": "performance_max_asset_groups",
+      "requiresDateRange": true,
+      "resource": "asset_group"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [
+        "SHOPPING",
+        "PERFORMANCE_MAX"
+      ],
+      "description": "Shopping product performance.",
+      "modeledConversions": false,
+      "name": "shopping_products",
+      "requiresDateRange": true,
+      "resource": "shopping_performance_view"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [
+        "VIDEO"
+      ],
+      "description": "Video campaign performance.",
+      "modeledConversions": false,
+      "name": "video_performance",
+      "requiresDateRange": true,
+      "resource": "campaign"
+    },
+    {
+      "allowedSegments": [
+        "segments.date"
+      ],
+      "campaignTypes": [
+        "HOTEL",
+        "TRAVEL"
+      ],
+      "description": "Hotel campaign performance.",
+      "modeledConversions": false,
+      "name": "hotel_performance",
+      "requiresDateRange": true,
+      "resource": "hotel_performance_view"
+    },
+    {
+      "allowedSegments": [
+        "segments.date"
+      ],
+      "campaignTypes": [
+        "LOCAL_SERVICES",
+        "LOCAL"
+      ],
+      "description": "Local Services campaign performance where available.",
+      "modeledConversions": false,
+      "name": "local_services_performance",
+      "requiresDateRange": true,
+      "resource": "campaign"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device",
+        "segments.ad_network_type"
+      ],
+      "campaignTypes": [
+        "DEMAND_GEN"
+      ],
+      "description": "Demand Gen campaign performance.",
+      "modeledConversions": false,
+      "name": "demand_gen_performance",
+      "requiresDateRange": true,
+      "resource": "campaign"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device",
+        "segments.ad_network_type"
+      ],
+      "campaignTypes": [
+        "DISPLAY"
+      ],
+      "description": "Display campaign performance.",
+      "modeledConversions": false,
+      "name": "display_performance",
+      "requiresDateRange": true,
+      "resource": "campaign"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [
+        "SMART"
+      ],
+      "description": "Smart campaign performance where available.",
+      "modeledConversions": false,
+      "name": "smart_campaign_performance",
+      "requiresDateRange": true,
+      "resource": "campaign"
+    }
+  ]
+}

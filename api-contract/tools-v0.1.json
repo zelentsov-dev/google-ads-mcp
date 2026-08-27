@@ -1,0 +1,19 @@
+{
+  "apiVersion": "v25",
+  "readOnly": true,
+  "tools": [
+    "account_health",
+    "auth_check",
+    "campaign_inventory",
+    "campaigns_query",
+    "change_events_query",
+    "customer_get",
+    "customer_hierarchy",
+    "customers_list",
+    "gaql_search",
+    "gaql_validate",
+    "report_run",
+    "reports_catalog",
+    "resource_metadata"
+  ]
+}

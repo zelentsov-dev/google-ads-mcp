@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Generated local environments and build artifacts"
+paths = [
+  '''(^|/)\.venv/''',
+  '''(^|/)dist/''',
+  '''(^|/)coverage\.json$''',
+  '''(^|/)coverage\.xml$''',
+]

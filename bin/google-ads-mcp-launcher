@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+plugin_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+if ! command -v uv >/dev/null 2>&1; then
+  printf '%s\n' 'google-ads-mcp: uv is required; install it from https://docs.astral.sh/uv/' >&2
+  exit 127
+fi
+
+exec uv run --frozen --no-dev --project "$plugin_root" google-ads-mcp serve --stdio

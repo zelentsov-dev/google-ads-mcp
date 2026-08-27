@@ -1,0 +1,133 @@
+{
+  "responseContract": {
+    "required": [
+      "status",
+      "context",
+      "evidence",
+      "items",
+      "truncated"
+    ],
+    "optional": [
+      "error",
+      "nextCursor"
+    ],
+    "statuses": [
+      "ok",
+      "partial",
+      "not_supported",
+      "unavailable"
+    ]
+  },
+  "tools": [
+    {
+      "name": "auth_check",
+      "description": "Verify read-only authentication for one explicit profile and customer.",
+      "inputProperties": ["customerId", "profile"],
+      "inputRequired": ["profile", "customerId"]
+    },
+    {
+      "name": "customers_list",
+      "description": "List customer resource names accessible to an explicit profile.",
+      "inputProperties": ["cursor", "pageSize", "profile"],
+      "inputRequired": ["profile"]
+    },
+    {
+      "name": "customer_get",
+      "description": "Read one customer's identity, currency, time zone, manager and test flags.",
+      "inputProperties": ["customerId", "profile"],
+      "inputRequired": ["profile", "customerId"]
+    },
+    {
+      "name": "customer_hierarchy",
+      "description": "Read the bounded customer-client hierarchy for a manager account.",
+      "inputProperties": ["cursor", "customerId", "pageSize", "profile"],
+      "inputRequired": ["profile", "customerId"]
+    },
+    {
+      "name": "account_health",
+      "description": "Read a bounded account configuration health snapshot.",
+      "inputProperties": ["customerId", "profile"],
+      "inputRequired": ["profile", "customerId"]
+    },
+    {
+      "name": "campaigns_query",
+      "description": "List generic campaign inventory with safe filters and bounded pagination.",
+      "inputProperties": [
+        "channelTypes",
+        "cursor",
+        "customerId",
+        "pageSize",
+        "profile",
+        "statuses"
+      ],
+      "inputRequired": ["profile", "customerId"]
+    },
+    {
+      "name": "campaign_inventory",
+      "description": "Read one inventory resource type for exactly one campaign.",
+      "inputProperties": [
+        "campaignId",
+        "cursor",
+        "customerId",
+        "pageSize",
+        "profile",
+        "resourceType"
+      ],
+      "inputRequired": ["profile", "customerId", "campaignId", "resourceType"]
+    },
+    {
+      "name": "resource_metadata",
+      "description": "Read Google Ads field metadata for up to 200 explicit field names.",
+      "inputProperties": ["customerId", "fieldNames", "profile"],
+      "inputRequired": ["profile", "customerId", "fieldNames"]
+    },
+    {
+      "name": "reports_catalog",
+      "description": "List the fixed read-only report templates and their limitations.",
+      "inputProperties": ["customerId", "profile"],
+      "inputRequired": ["profile", "customerId"]
+    },
+    {
+      "name": "report_run",
+      "description": "Run one catalog report for explicit ISO dates and bounded filters.",
+      "inputProperties": [
+        "campaignIds",
+        "cursor",
+        "customerId",
+        "dateFrom",
+        "dateTo",
+        "pageSize",
+        "profile",
+        "report",
+        "segments"
+      ],
+      "inputRequired": ["profile", "customerId", "report", "dateFrom", "dateTo"]
+    },
+    {
+      "name": "change_events_query",
+      "description": "Read recent change events within Google's 30-day window.",
+      "inputProperties": [
+        "cursor",
+        "customerId",
+        "dateFrom",
+        "dateTo",
+        "includeUserIdentity",
+        "pageSize",
+        "profile"
+      ],
+      "inputRequired": ["profile", "customerId", "dateFrom", "dateTo"]
+    },
+    {
+      "name": "gaql_validate",
+      "description": "Validate one bounded SELECT-only GAQL query without executing it.",
+      "inputProperties": ["customerId", "profile", "query"],
+      "inputRequired": ["profile", "customerId", "query"]
+    },
+    {
+      "name": "gaql_search",
+      "description": "Execute one validated SELECT-only GAQL query without a cursor.",
+      "inputProperties": ["customerId", "profile", "query"],
+      "inputRequired": ["profile", "customerId", "query"]
+    }
+  ]
+}

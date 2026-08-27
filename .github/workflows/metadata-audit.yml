@@ -1,0 +1,24 @@
+name: Google Ads field metadata audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-v25:
+    runs-on: [self-hosted, macOS, google-ads-acceptance]
+    environment: google-ads-read-only-acceptance
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: "0.11.13"
+      - run: uv sync --frozen --all-groups
+      - run: uv run --frozen python scripts/validate_gaql_templates.py --live-profile acceptance
+        env:
+          GOOGLE_ADS_MCP_CONFIG: ${{ vars.GOOGLE_ADS_MCP_CONFIG_PATH }}
+          GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN }}

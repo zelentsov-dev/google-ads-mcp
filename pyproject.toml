@@ -1,0 +1,92 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "google-ads-operator-mcp"
+version = "0.1.0"
+description = "A local, security-first, read-only MCP server for Google Ads analysis."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = { file = "LICENSE" }
+authors = [{ name = "zelentsov-dev" }]
+keywords = ["google-ads", "mcp", "codex", "advertising", "analytics"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "google-ads==31.2.0",
+  "mcp==1.29.1",
+  "typing-extensions==4.16.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/zelentsov-dev/google-ads-mcp"
+Repository = "https://github.com/zelentsov-dev/google-ads-mcp"
+Issues = "https://github.com/zelentsov-dev/google-ads-mcp/issues"
+
+[project.scripts]
+google-ads-mcp = "google_ads_mcp.cli:main"
+
+[dependency-groups]
+dev = [
+  "build==1.5.0",
+  "hypothesis==6.165.10",
+  "licensecheck==2025.1.0",
+  "pip-audit==2.10.1",
+  "pyright==1.1.411",
+  "pyyaml==6.0.3",
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
+  "ruff==0.16.4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/google_ads_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=google_ads_mcp --cov-branch --cov-report=term-missing:skip-covered --cov-report=xml --cov-report=json:coverage.json --cov-fail-under=90"
+testpaths = ["tests"]
+markers = ["live: requires an explicitly configured Google Ads account"]
+
+[tool.coverage.run]
+branch = true
+source = ["google_ads_mcp"]
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "raise AssertionError",
+  "raise NotImplementedError",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["A", "ASYNC", "B", "C4", "E", "F", "I", "N", "PERF", "PIE", "PT", "RUF", "S", "SIM", "T20", "UP"]
+ignore = ["N803", "S101", "S608", "T201"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ASYNC240", "RUF001", "S105", "S106", "S603"]
+"scripts/smoke_plugin_archive.py" = ["S603"]
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+include = ["src", "scripts"]
+reportMissingTypeStubs = "none"
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownArgumentType = "none"
+reportUnusedFunction = "none"

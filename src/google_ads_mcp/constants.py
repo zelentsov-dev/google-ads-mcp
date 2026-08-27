@@ -1,0 +1,13 @@
+from typing import Final
+
+VERSION: Final = "0.1.0"
+API_VERSION: Final = "v25"
+GOOGLE_ADS_CLIENT_VERSION: Final = "31.2.0"
+DEFAULT_CONFIG_ENV: Final = "GOOGLE_ADS_MCP_CONFIG"
+DEFAULT_CONFIG_PATH: Final = "~/.config/google-ads-mcp/accounts.json"
+MAX_INTERNAL_ROWS: Final = 1_000
+MAX_PAGE_ITEMS: Final = 200
+MAX_REPORT_DAYS: Final = 366
+MAX_CHANGE_EVENT_DAYS: Final = 30
+REQUEST_DEADLINE_SECONDS: Final = 30.0
+MAX_READ_ATTEMPTS: Final = 2

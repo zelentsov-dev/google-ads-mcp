@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "google-ads": {
+      "command": "./bin/google-ads-mcp-launcher",
+      "args": []
+    }
+  }
+}
