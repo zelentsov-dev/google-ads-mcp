@@ -68,7 +68,6 @@ def test_parse_yaml_config_requires_secure_absolute_file(tmp_path: Path) -> None
         {"profiles": "bad"},
         {"profiles": ["bad"]},
         {"profiles": [_profile(name="bad space")]},
-        {"profiles": [_profile(allowWrites=True)]},
         {"profiles": [_profile(extra="no")]},
         {"profiles": [_profile(auth={"type": "unknown"})]},
         {"profiles": [_profile(auth="not-an-object")]},
@@ -92,6 +91,11 @@ def test_invalid_configs_are_rejected(data: object) -> None:
 def test_duplicate_profiles_rejected() -> None:
     with pytest.raises(ConfigError, match="Duplicate"):
         parse_config({"profiles": [_profile(), _profile()]}, path=Path("/config.json"))
+
+
+def test_write_profile_requires_explicit_boolean_but_is_supported() -> None:
+    config = parse_config({"profiles": [_profile(allowWrites=True)]}, path=Path("/config.json"))
+    assert config.profiles[0].allow_writes is True
 
 
 def test_relative_or_unsafe_yaml_rejected(tmp_path: Path) -> None:
@@ -133,8 +137,24 @@ def test_init_and_load_owner_only_config(tmp_path: Path) -> None:
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
     config = load_config(str(path))
     assert config.profiles[0].name == "production-read-only"
+    assert config.profiles[0].auth.developer_token_keyring is True
     with pytest.raises(ConfigError, match="already exists"):
         initialize_config(str(path))
+
+
+def test_allow_writes_requires_boolean(tmp_path: Path) -> None:
+    with pytest.raises(ConfigError, match="boolean"):
+        parse_config(
+            {
+                "profiles": [
+                    _profile(
+                        allowWrites="false",
+                        auth={"type": "adc", "developerTokenEnv": "SYNTHETIC_TOKEN"},
+                    )
+                ]
+            },
+            path=tmp_path / "accounts.json",
+        )
 
 
 def test_init_cleans_temporary_file_on_atomic_failure(

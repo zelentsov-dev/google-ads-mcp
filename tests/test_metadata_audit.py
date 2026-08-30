@@ -58,20 +58,18 @@ def test_live_audit_validates_metadata_and_every_query_shape(
         ) -> tuple[dict[str, Any], ...]:
             return tuple({"name": name, "selectable": True} for name in field_names)
 
-        async def validate_query(
-            self, profile: Any, customer_id: str, query: str
-        ) -> None:
+        async def validate_query(self, profile: Any, customer_id: str, query: str) -> None:
             assert customer_id == "2222222222"
             self.queries.append(query)
 
     adapter = Adapter()
     monkeypatch.setattr(validate_gaql_templates, "GoogleAdsReadAdapter", lambda: adapter)
-    count = asyncio.run(
-        validate_gaql_templates.validate_live("acceptance", str(config), None)
-    )
+    count = asyncio.run(validate_gaql_templates.validate_live("acceptance", str(config), None))
     assert count == len(adapter.queries)
     assert count > len(REPORTS)
-    assert all("segments.date BETWEEN" in query for query in adapter.queries)
+    assert any("segments.date BETWEEN" in query for query in adapter.queries)
+    assert any("campaign_budget.resource_name" in query for query in adapter.queries)
+    assert any("effective_cpc_bid_micros" in query for query in adapter.queries)
 
 
 def test_metadata_audit_rejects_missing_or_nonselectable_fields() -> None:

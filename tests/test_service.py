@@ -48,9 +48,7 @@ def test_customer_and_hierarchy_cursors(accounts_config: Any, fake_adapter: Any)
     service = GoogleAdsService(accounts_config, fake_adapter)
     customers = _run(service.customers_list("test-read-only"))
     assert len(customers["items"]) == 200
-    customers_next = _run(
-        service.customers_list("test-read-only", cursor=customers["nextCursor"])
-    )
+    customers_next = _run(service.customers_list("test-read-only", cursor=customers["nextCursor"]))
     assert len(customers_next["items"]) == 5
 
     fake_adapter.result = AdapterSearchResult(
@@ -59,9 +57,7 @@ def test_customer_and_hierarchy_cursors(accounts_config: Any, fake_adapter: Any)
     hierarchy = _run(service.customer_hierarchy("test-read-only", "2222222222"))
     assert len(hierarchy["items"]) == 200
     hierarchy_next = _run(
-        service.customer_hierarchy(
-            "test-read-only", "2222222222", cursor=hierarchy["nextCursor"]
-        )
+        service.customer_hierarchy("test-read-only", "2222222222", cursor=hierarchy["nextCursor"])
     )
     assert len(hierarchy_next["items"]) == 5
 
@@ -125,6 +121,10 @@ def test_campaign_query_unknown_enum_and_pagination(
     }
     assert "campaign.status IN ('ENABLED')" in fake_adapter.queries[0]
     assert "campaign.advertising_channel_type IN ('SEARCH')" in fake_adapter.queries[0]
+    assert "campaign.start_date_time" in fake_adapter.queries[0]
+    assert "campaign.end_date_time" in fake_adapter.queries[0]
+    assert "campaign.start_date," not in fake_adapter.queries[0]
+    assert "campaign.end_date," not in fake_adapter.queries[0]
     assert "unsupported_specialization" in first["evidence"]["limitations"]
     second = _run(
         service.campaigns_query(
@@ -144,11 +144,7 @@ def test_campaign_query_validation(accounts_config: Any, fake_adapter: Any) -> N
     with pytest.raises(ValidationError, match="status"):
         _run(service.campaigns_query("test-read-only", "2222222222", statuses=["invalid"]))
     with pytest.raises(ValidationError, match="channel"):
-        _run(
-            service.campaigns_query(
-                "test-read-only", "2222222222", channel_types=["BAD VALUE"]
-            )
-        )
+        _run(service.campaigns_query("test-read-only", "2222222222", channel_types=["BAD VALUE"]))
     with pytest.raises(ValidationError, match="pageSize"):
         _run(service.campaigns_query("test-read-only", "2222222222", page_size=201))
 
@@ -163,9 +159,7 @@ def test_campaign_inventory_matrix(
     fake_adapter.result = AdapterSearchResult(({"campaign": {"id": "123"}},), 1, False)
     service = GoogleAdsService(accounts_config, fake_adapter)
     response = _run(
-        service.campaign_inventory(
-            "test-read-only", "2222222222", "123", resource_type
-        )
+        service.campaign_inventory("test-read-only", "2222222222", "123", resource_type)
     )
     assert response["status"] == "ok"
     assert "campaign.id = 123" in fake_adapter.queries[0]
@@ -174,29 +168,205 @@ def test_campaign_inventory_matrix(
 def test_campaign_inventory_rejects_unsafe_inputs(accounts_config: Any, fake_adapter: Any) -> None:
     service = GoogleAdsService(accounts_config, fake_adapter)
     with pytest.raises(ValidationError, match="digits"):
-        _run(
-            service.campaign_inventory(
-                "test-read-only", "2222222222", "1 OR 1", "ads"
-            )
-        )
+        _run(service.campaign_inventory("test-read-only", "2222222222", "1 OR 1", "ads"))
     with pytest.raises(ValidationError, match="resourceType"):
-        _run(
-            service.campaign_inventory(
-                "test-read-only", "2222222222", "1", "mutations"
-            )
-        )
+        _run(service.campaign_inventory("test-read-only", "2222222222", "1", "mutations"))
 
 
 def test_metadata_and_catalog(accounts_config: Any, fake_adapter: Any) -> None:
     service = GoogleAdsService(accounts_config, fake_adapter)
     metadata = _run(
-        service.resource_metadata(
-            "test-read-only", "2222222222", ["campaign.id", "metrics.clicks"]
-        )
+        service.resource_metadata("test-read-only", "2222222222", ["campaign.id", "metrics.clicks"])
     )
     assert len(metadata["items"]) == 2
     catalog = _run(service.reports_catalog("test-read-only", "2222222222"))
     assert any(item["name"] == "search_terms" for item in catalog["items"])
+
+
+def test_v020_info_profiles_and_analytics(accounts_config: Any, fake_adapter: Any) -> None:
+    service = GoogleAdsService(accounts_config, fake_adapter)
+    info = _run(service.server_info())
+    assert info["items"][0]["readTools"] == 22
+    profiles = _run(service.profiles_list())
+    assert profiles["items"][0]["allowWrites"] is False
+
+    fake_adapter.result = AdapterSearchResult(({"campaign": {"id": "1"}},), 1, False)
+    diagnostics = _run(service.campaign_diagnostics("test-read-only", "2222222222", "1"))
+    assert diagnostics["status"] == "ok"
+    search_terms = _run(
+        service.search_terms_report(
+            "test-read-only", "2222222222", "2026-01-01", "2026-01-02"
+        )
+    )
+    assert search_terms["status"] == "ok"
+    assets = _run(
+        service.asset_performance_report(
+            "test-read-only", "2222222222", "2026-01-01", "2026-01-02"
+        )
+    )
+    assert assets["status"] == "ok"
+
+    goals = _run(service.conversion_goals_list("test-read-only", "2222222222"))
+    assert "attribution truth" in goals["evidence"]["limitations"][0]
+    recommendations = _run(
+        service.recommendations_list("test-read-only", "2222222222", ["1", "2"])
+    )
+    assert "campaign.id IN (1, 2)" in fake_adapter.queries[-1]
+    assert "recommendation.impact" not in fake_adapter.queries[-1]
+    assert "proposals" in recommendations["evidence"]["limitations"][0]
+
+
+def test_v020_analytics_validation_and_empty_diagnostics(
+    accounts_config: Any, fake_adapter: Any
+) -> None:
+    service = GoogleAdsService(accounts_config, fake_adapter)
+    missing = _run(service.campaign_diagnostics("test-read-only", "2222222222", "1"))
+    assert missing["status"] == "partial"
+    with pytest.raises(ValidationError, match="campaignId"):
+        _run(service.campaign_diagnostics("test-read-only", "2222222222", "bad"))
+    with pytest.raises(ValidationError, match="campaignIds"):
+        _run(service.recommendations_list("test-read-only", "2222222222", ["bad"]))
+
+
+def test_keyword_ideas_and_forecast(accounts_config: Any, fake_adapter: Any) -> None:
+    service = GoogleAdsService(accounts_config, fake_adapter)
+    ideas = _run(
+        service.keyword_ideas(
+            "test-read-only",
+            "2222222222",
+            keywords=["  shoes  "],
+            page_url="https://example.com",
+            language_id="1000",
+            geo_target_ids=["2840"],
+        )
+    )
+    assert ideas["items"] == [{"text": "idea"}]
+    assert ideas["status"] == "ok"
+    assert ideas["truncated"] is False
+    assert fake_adapter.idea_calls[0]["keywords"] == ("shoes",)
+
+    fake_adapter.idea_result = AdapterSearchResult(
+        tuple({"text": f"idea-{index}"} for index in range(200)), None, True
+    )
+    truncated = _run(
+        service.keyword_ideas(
+            "test-read-only",
+            "2222222222",
+            keywords=["shoes"],
+            page_url=None,
+            language_id="1000",
+            geo_target_ids=["2840"],
+        )
+    )
+    assert truncated["status"] == "partial"
+    assert truncated["evidence"]["partial"] is True
+    assert truncated["truncated"] is True
+    assert len(truncated["items"]) == 200
+    assert "first 200" in truncated["evidence"]["limitations"][1]
+    forecast = _run(
+        service.forecast_run(
+            "test-read-only",
+            "2222222222",
+            keywords=[{"text": " shoes ", "matchType": "EXACT"}],
+            language_id="1000",
+            geo_target_ids=["2840"],
+            date_from="2026-01-01",
+            date_to="2026-01-31",
+            daily_budget_micros="1000000",
+            max_cpc_bid_micros="100000",
+        )
+    )
+    assert forecast["items"] == [{"clicks": 10.0}]
+    assert fake_adapter.forecast_calls[0]["currency_code"] == "USD"
+    assert fake_adapter.forecast_calls[0]["keywords"] == (
+        {"text": "shoes", "matchType": "EXACT"},
+    )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"keywords": None, "page_url": None, "language_id": "1000", "geo_target_ids": ["1"]},
+        {"keywords": ["x" * 81], "page_url": None, "language_id": "1000", "geo_target_ids": ["1"]},
+        {
+            "keywords": ["x"],
+            "page_url": "file:///tmp",
+            "language_id": "1000",
+            "geo_target_ids": ["1"],
+        },
+        {"keywords": ["x"], "page_url": None, "language_id": "bad", "geo_target_ids": ["1"]},
+        {"keywords": ["x"], "page_url": None, "language_id": "1000", "geo_target_ids": []},
+        {
+            "keywords": ["x"],
+            "page_url": None,
+            "language_id": "1000",
+            "geo_target_ids": ["1", "1"],
+        },
+        {
+            "keywords": ["x"],
+            "page_url": None,
+            "language_id": "1000",
+            "geo_target_ids": [str(index) for index in range(21)],
+        },
+        {
+            "keywords": ["x"],
+            "page_url": None,
+            "language_id": "1000",
+            "geo_target_ids": ["٢٨٤٠"],
+        },
+    ],
+)
+def test_keyword_ideas_validation(
+    accounts_config: Any, fake_adapter: Any, values: dict[str, Any]
+) -> None:
+    with pytest.raises(ValidationError):
+        _run(
+            GoogleAdsService(accounts_config, fake_adapter).keyword_ideas(
+                "test-read-only", "2222222222", **values
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"keywords": []},
+        {"keywords": [{"text": "shoes"}]},
+        {"keywords": [{"text": "shoes", "matchType": "INVALID"}]},
+        {
+            "keywords": [
+                {"text": "shoes", "matchType": "EXACT"},
+                {"text": " shoes ", "matchType": "EXACT"},
+            ]
+        },
+        {"language_id": "bad"},
+        {"daily_budget_micros": "0"},
+        {"max_cpc_bid_micros": "bad"},
+        {"geo_target_ids": []},
+        {"geo_target_ids": ["2840", "2840"]},
+        {"geo_target_ids": [str(index) for index in range(21)]},
+        {"geo_target_ids": ["٢٨٤٠"]},
+    ],
+)
+def test_forecast_validation(
+    accounts_config: Any, fake_adapter: Any, change: dict[str, Any]
+) -> None:
+    values: dict[str, Any] = {
+        "keywords": [{"text": "shoes", "matchType": "EXACT"}],
+        "language_id": "1000",
+        "geo_target_ids": ["2840"],
+        "date_from": "2026-01-01",
+        "date_to": "2026-01-31",
+        "daily_budget_micros": "1000000",
+        "max_cpc_bid_micros": "100000",
+    }
+    values.update(change)
+    with pytest.raises(ValidationError):
+        _run(
+            GoogleAdsService(accounts_config, fake_adapter).forecast_run(
+                "test-read-only", "2222222222", **values
+            )
+        )
 
 
 def test_report_run_and_test_account_limitation(accounts_config: Any, fake_adapter: Any) -> None:
@@ -219,9 +389,7 @@ def test_report_run_and_test_account_limitation(accounts_config: Any, fake_adapt
 
 def test_report_not_supported(accounts_config: Any, fake_adapter: Any) -> None:
     class NotSupported(type(fake_adapter)):
-        async def search(
-            self, profile: Any, customer_id: str, query: str
-        ) -> AdapterSearchResult:
+        async def search(self, profile: Any, customer_id: str, query: str) -> AdapterSearchResult:
             if "customer.currency_code" in query:
                 return await super().search(profile, customer_id, query)
             raise AdapterError("unsupported", code="not_supported", status="not_supported")
@@ -317,8 +485,7 @@ def test_gaql_validate_and_search(accounts_config: Any, fake_adapter: Any) -> No
         service.gaql_search(
             "test-read-only",
             "2222222222",
-            "SELECT metrics.clicks FROM campaign "
-            "WHERE segments.date DURING LAST_30_DAYS LIMIT 1",
+            "SELECT metrics.clicks FROM campaign WHERE segments.date DURING LAST_30_DAYS LIMIT 1",
         )
     )
     assert any("customer time zone" in item for item in bounded["evidence"]["limitations"])

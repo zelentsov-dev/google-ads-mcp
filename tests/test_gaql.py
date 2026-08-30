@@ -151,6 +151,15 @@ def test_denied_resources(resource: str) -> None:
         validate_gaql(f"SELECT {resource}.resource_name FROM {resource} LIMIT 1")
 
 
+def test_account_budget_proposal_billing_fields_are_explicitly_denied() -> None:
+    with pytest.raises(ValidationError, match="not allowed"):
+        validate_gaql(
+            "SELECT account_budget_proposal.purchase_order_number, "
+            "account_budget_proposal.approved_spending_limit_micros "
+            "FROM account_budget_proposal LIMIT 1"
+        )
+
+
 @given(
     st.tuples(st.text(max_size=49), st.sampled_from([";", "#"]), st.text(max_size=49)).map("".join)
 )

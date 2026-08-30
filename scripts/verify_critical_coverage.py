@@ -7,8 +7,15 @@ from typing import Any, cast
 CRITICAL_FILES = (
     "src/google_ads_mcp/config.py",
     "src/google_ads_mcp/gaql.py",
+    "src/google_ads_mcp/journal.py",
+    "src/google_ads_mcp/operator.py",
+    "src/google_ads_mcp/plans.py",
+    "src/google_ads_mcp/policies.py",
+    "src/google_ads_mcp/receipts.py",
     "src/google_ads_mcp/security.py",
+    "src/google_ads_mcp/secrets.py",
     "src/google_ads_mcp/server.py",
+    "src/google_ads_mcp/write_adapter.py",
 )
 
 

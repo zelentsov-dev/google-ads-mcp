@@ -55,9 +55,7 @@ def test_plugin_archive_is_allowlisted_and_executable(tmp_path: Path) -> None:
         ),
         (
             "data.txt",
-            b"eyJhbGciOiJIUzI1NiJ9"
-            + b".eyJzdWIiOiJzeW50aGV0aWMifQ"
-            + b".abcdefghijklmnopqrstuv",
+            b"eyJhbGciOiJIUzI1NiJ9" + b".eyJzdWIiOiJzeW50aGV0aWMifQ" + b".abcdefghijklmnopqrstuv",
         ),
     ],
 )
@@ -73,6 +71,27 @@ def test_artifact_scan_rejects_credentials(tmp_path: Path, name: str, content: b
     assert completed.returncode != 0
 
 
+def test_artifact_scan_accepts_directory_inputs_and_rejects_empty_directories(
+    tmp_path: Path,
+) -> None:
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    empty = subprocess.run(
+        [sys.executable, "scripts/scan_artifacts.py", str(artifacts)],
+        capture_output=True,
+        text=True,
+    )
+    assert empty.returncode != 0
+    (artifacts / "safe.txt").write_text("safe artifact")
+    valid = subprocess.run(
+        [sys.executable, "scripts/scan_artifacts.py", str(artifacts)],
+        capture_output=True,
+        text=True,
+    )
+    assert valid.returncode == 0
+    assert "1 files" in valid.stdout
+
+
 def test_manifest_validator() -> None:
     subprocess.run(
         [sys.executable, "scripts/validate_manifests.py"],
@@ -83,7 +102,7 @@ def test_manifest_validator() -> None:
 
 
 def test_release_version_gate(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_REF_NAME", "v0.1.0")
+    monkeypatch.setenv("GITHUB_REF_NAME", "v0.2.0")
     valid = subprocess.run(
         [sys.executable, "scripts/verify_release_version.py"],
         env=os.environ.copy(),

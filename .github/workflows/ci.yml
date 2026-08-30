@@ -60,7 +60,7 @@ jobs:
           version: "0.11.13"
       - run: uv sync --frozen --all-groups
       - run: uv run --frozen python -m build
-      - run: uv run --frozen python scripts/package_plugin.py dist/google-ads-mcp-plugin-0.1.0.zip
+      - run: uv run --frozen python scripts/package_plugin.py dist/google-ads-mcp-plugin-0.2.0.zip
       - run: uv run --frozen python scripts/scan_artifacts.py dist/*
       - run: uv run --frozen python scripts/generate_checksums.py dist
       - run: python -m venv /tmp/google-ads-mcp-smoke
@@ -69,7 +69,7 @@ jobs:
       - run: python -m venv /tmp/google-ads-mcp-sdist-smoke
       - run: /tmp/google-ads-mcp-sdist-smoke/bin/pip install dist/*.tar.gz
       - run: /tmp/google-ads-mcp-sdist-smoke/bin/google-ads-mcp version
-      - run: uv run --frozen python scripts/smoke_plugin_archive.py dist/google-ads-mcp-plugin-0.1.0.zip
+      - run: uv run --frozen python scripts/smoke_plugin_archive.py dist/google-ads-mcp-plugin-0.2.0.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: distributions

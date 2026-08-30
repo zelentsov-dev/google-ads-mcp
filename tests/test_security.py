@@ -66,9 +66,7 @@ def test_secure_read_uses_the_validated_descriptor(
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX descriptor flag regression")
-def test_secure_open_fallback_and_failures(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_secure_open_fallback_and_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "secure.json"
     path.write_text("{}")
     path.chmod(0o600)

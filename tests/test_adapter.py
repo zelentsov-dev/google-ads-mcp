@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import inspect
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from google.ads.googleads import client as google_client_module
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.v25.errors.types.errors import (
     ErrorCode,
@@ -19,6 +21,7 @@ from google.ads.googleads.v25.services.services.google_ads_field_service.async_c
 from google.ads.googleads.v25.services.services.google_ads_service.async_client import (
     GoogleAdsServiceAsyncClient,
 )
+from google.auth.credentials import AnonymousCredentials
 
 from google_ads_mcp import adapter as adapter_module
 from google_ads_mcp.adapter import GoogleAdsReadAdapter
@@ -100,9 +103,7 @@ def test_search_normalizes_and_truncates_without_unsupported_page_size() -> None
     client = Client({"GoogleAdsService": service})
     adapter = GoogleAdsReadAdapter(client_factory=lambda _: client)
     result = asyncio.run(
-        adapter.search(
-            _profile(), "2222222222", "SELECT campaign.id FROM campaign LIMIT 1"
-        )
+        adapter.search(_profile(), "2222222222", "SELECT campaign.id FROM campaign LIMIT 1")
     )
     assert result.items[0]["campaign"]["id"] == "1"
     assert result.total_results == 2
@@ -115,9 +116,12 @@ def test_search_normalizes_and_truncates_without_unsupported_page_size() -> None
 
 def test_pinned_v25_search_signatures_do_not_offer_page_size_keyword() -> None:
     assert "page_size" not in inspect.signature(GoogleAdsServiceAsyncClient.search).parameters
-    assert "page_size" not in inspect.signature(
-        GoogleAdsFieldServiceAsyncClient.search_google_ads_fields
-    ).parameters
+    assert (
+        "page_size"
+        not in inspect.signature(
+            GoogleAdsFieldServiceAsyncClient.search_google_ads_fields
+        ).parameters
+    )
 
 
 def test_search_marks_exact_internal_row_limit_as_truncated() -> None:
@@ -125,9 +129,7 @@ def test_search_marks_exact_internal_row_limit_as_truncated() -> None:
     client = Client({"GoogleAdsService": Service(pager)})
     adapter = GoogleAdsReadAdapter(client_factory=lambda _: client)
     result = asyncio.run(
-        adapter.search(
-            _profile(), "2222222222", "SELECT campaign.id FROM campaign LIMIT 1000"
-        )
+        adapter.search(_profile(), "2222222222", "SELECT campaign.id FROM campaign LIMIT 1000")
     )
     assert len(result.items) == 1_000
     assert result.truncated
@@ -150,9 +152,7 @@ def test_accessible_customers_metadata_and_query_validation() -> None:
     metadata = asyncio.run(adapter.field_metadata(_profile(), ["campaign.id"]))
     assert metadata[0]["name"] == "campaign.id"
     asyncio.run(
-        adapter.validate_query(
-            _profile(), "2222222222", "SELECT campaign.id FROM campaign LIMIT 1"
-        )
+        adapter.validate_query(_profile(), "2222222222", "SELECT campaign.id FROM campaign LIMIT 1")
     )
     assert query_service.calls[0]["request"]["validate_only"] is True
     assert "page_size" not in metadata_service.calls[0]
@@ -197,9 +197,7 @@ def test_transient_retry_then_success() -> None:
 
     adapter = GoogleAdsReadAdapter(client_factory=lambda _: client, sleeper=record_delay)
     result = asyncio.run(
-        adapter.search(
-            _profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1"
-        )
+        adapter.search(_profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1")
     )
     assert result.items
     assert calls[0] == 2
@@ -220,9 +218,7 @@ def test_errors_are_sanitized(status: str, code: str, transient: bool) -> None:
     adapter = GoogleAdsReadAdapter(client_factory=lambda _: client)
     with pytest.raises(AdapterError) as caught:
         asyncio.run(
-            adapter.search(
-                _profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1"
-            )
+            adapter.search(_profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1")
         )
     assert caught.value.code == code
     assert caught.value.transient is transient
@@ -235,9 +231,7 @@ def test_deadline_and_invalid_request_id() -> None:
     adapter = GoogleAdsReadAdapter(client_factory=lambda _: None, clock=lambda: next(times))
     with pytest.raises(AdapterError, match="deadline"):
         asyncio.run(
-            adapter.search(
-                _profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1"
-            )
+            adapter.search(_profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1")
         )
     assert GoogleAdsReadAdapter._request_id(RpcFailureError("BAD", "space id")) is None
 
@@ -257,9 +251,7 @@ def test_retry_sleep_cannot_cross_total_deadline() -> None:
     )
     with pytest.raises(AdapterError, match="deadline"):
         asyncio.run(
-            adapter.search(
-                _profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1"
-            )
+            adapter.search(_profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1")
         )
     assert delays == [pytest.approx(0.1)]
 
@@ -274,9 +266,7 @@ def test_asyncio_hard_deadline_bounds_retry_sleep(monkeypatch: pytest.MonkeyPatc
     adapter = GoogleAdsReadAdapter(client_factory=lambda _: client, sleeper=blocked_sleep)
     with pytest.raises(AdapterError, match="deadline"):
         asyncio.run(
-            adapter.search(
-                _profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1"
-            )
+            adapter.search(_profile(), "2222222222", "SELECT customer.id FROM customer LIMIT 1")
         )
 
 
@@ -313,14 +303,92 @@ def test_adc_and_yaml_client_providers(monkeypatch: pytest.MonkeyPatch, tmp_path
     yaml_client = type("YamlClient", (), {"login_customer_id": None})()
     monkeypatch.setattr(
         GoogleAdsClient,
-        "load_from_string",
-        lambda yaml_text, version=None: loaded.append(("yaml", yaml_text, version))
-        or yaml_client,
+        "load_from_dict",
+        lambda config, version=None: loaded.append(("dict", config, version)) or yaml_client,
     )
     yaml_auth = GoogleAdsYamlAuth(type="googleAdsYaml", path=yaml)
     assert GoogleAdsReadAdapter._build_client(_profile(yaml_auth)) is yaml_client
-    assert loaded[-1] == ("yaml", "synthetic: true", "v25")
+    assert loaded[-1] == ("dict", {"synthetic": True}, "v25")
     assert yaml_client.login_customer_id == "1111111111"
+
+
+def test_adc_and_yaml_keyring_token_sources(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class Secrets:
+        def __init__(self, value: str | None) -> None:
+            self.value = value
+
+        def get_developer_token(self, profile: str) -> str | None:
+            assert profile == "test"
+            return self.value
+
+        def set_developer_token(self, profile: str, token: str) -> None:
+            raise AssertionError("not used")
+
+    loaded: list[dict[str, Any]] = []
+    monkeypatch.setattr(
+        GoogleAdsClient,
+        "load_from_dict",
+        lambda config, version=None: loaded.append(config) or "adc-client",
+    )
+    adc = ADCAuth(type="adc", developer_token_env=None, developer_token_keyring=True)
+    assert (
+        GoogleAdsReadAdapter._build_client_with_store(_profile(adc), Secrets("keyring-token"))
+        == "adc-client"
+    )
+    assert loaded[0]["developer_token"] == "keyring-token"
+    with pytest.raises(SecurityError, match="secure storage"):
+        GoogleAdsReadAdapter._build_client_with_store(_profile(adc), Secrets(None))
+
+    yaml = tmp_path / "google-ads.yaml"
+    yaml.write_text("synthetic: true")
+    yaml.chmod(0o600)
+    yaml_client = SimpleNamespace(developer_token="old", login_customer_id=None)
+    monkeypatch.setattr(
+        GoogleAdsClient,
+        "load_from_dict",
+        lambda config, version=None: loaded.append(config) or yaml_client,
+    )
+    yaml_auth = GoogleAdsYamlAuth(
+        type="googleAdsYaml", path=yaml, developer_token_keyring=True
+    )
+    result = GoogleAdsReadAdapter._build_client_with_store(
+        _profile(yaml_auth), Secrets("keyring-token")
+    )
+    assert result is yaml_client
+    assert result.login_customer_id == "1111111111"
+    assert loaded[-1]["developer_token"] == "keyring-token"
+
+
+def test_real_google_ads_client_accepts_yaml_with_keyring_token_injected_before_load(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class Secrets:
+        def get_developer_token(self, profile: str) -> str | None:
+            return "keyring-token"
+
+        def set_developer_token(self, profile: str, token: str) -> None:
+            raise AssertionError("not used")
+
+    yaml = tmp_path / "google-ads.yaml"
+    yaml.write_text(
+        "client_id: synthetic-client\n"
+        "client_secret: synthetic-secret\n"
+        "refresh_token: synthetic-refresh\n"
+        "use_proto_plus: true\n"
+    )
+    yaml.chmod(0o600)
+    monkeypatch.setattr(
+        google_client_module.oauth2,
+        "get_credentials",
+        lambda config: AnonymousCredentials(),
+    )
+    auth = GoogleAdsYamlAuth(type="googleAdsYaml", path=yaml, developer_token_keyring=True)
+    client = GoogleAdsReadAdapter._build_client_with_store(_profile(auth), Secrets())
+    assert isinstance(client, GoogleAdsClient)
+    assert client.developer_token == "keyring-token"
+    assert client.login_customer_id == "1111111111"
 
 
 @pytest.mark.parametrize(
@@ -367,7 +435,97 @@ def test_cancellation_is_not_converted_or_retried() -> None:
     adapter = GoogleAdsReadAdapter(client_factory=lambda _: client)
     with pytest.raises(Cancellation):
         asyncio.run(
-            adapter.search(
-                _profile(), "2222222222", "SELECT campaign.id FROM campaign LIMIT 1"
-            )
+            adapter.search(_profile(), "2222222222", "SELECT campaign.id FROM campaign LIMIT 1")
         )
+
+
+def test_keyword_ideas_and_forecast_build_real_v25_requests() -> None:
+    class KeywordService:
+        def __init__(self) -> None:
+            self.idea_requests: list[Any] = []
+            self.forecast_requests: list[Any] = []
+            self.idea_rows = [{"text": "idea"}]
+            self.transport = Transport()
+
+        async def generate_keyword_ideas(self, **kwargs: Any) -> Pager:
+            self.idea_requests.append(kwargs["request"])
+            return Pager(self.idea_rows)
+
+        async def generate_keyword_forecast_metrics(self, **kwargs: Any) -> Any:
+            self.forecast_requests.append(kwargs["request"])
+            return SimpleNamespace(campaign_forecast_metrics={"clicks": 1.0})
+
+    class KeywordClient:
+        def __init__(self, service: KeywordService) -> None:
+            self.real = GoogleAdsClient(
+                AnonymousCredentials(), developer_token="synthetic", use_proto_plus=True
+            )
+            self.enums = self.real.enums
+            self.service = service
+
+        def get_type(self, *args: Any, **kwargs: Any) -> Any:
+            return self.real.get_type(*args, **kwargs)
+
+        def get_service(self, name: str, version: str, *, is_async: bool) -> KeywordService:
+            assert name == "KeywordPlanIdeaService"
+            assert version == "v25"
+            assert is_async is True
+            return self.service
+
+    service = KeywordService()
+    client = KeywordClient(service)
+    adapter = GoogleAdsReadAdapter(client_factory=lambda _: client)
+    ideas = asyncio.run(
+        adapter.keyword_ideas(
+            _profile(),
+            "2222222222",
+            keywords=("shoes",),
+            page_url="https://example.com",
+            language_id="1000",
+            geo_target_ids=("2840",),
+        )
+    )
+    assert ideas.items == ({"text": "idea"},)
+    assert ideas.truncated is False
+    idea_request = service.idea_requests[0]
+    assert idea_request.keyword_and_url_seed.keywords == ["shoes"]
+    assert idea_request.keyword_and_url_seed.url == "https://example.com"
+
+    service.idea_rows = [{"text": f"idea-{index}"} for index in range(201)]
+    truncated_ideas = asyncio.run(
+        adapter.keyword_ideas(
+            _profile(),
+            "2222222222",
+            keywords=("shoes",),
+            page_url=None,
+            language_id="1000",
+            geo_target_ids=("2840",),
+        )
+    )
+    assert len(truncated_ideas.items) == 200
+    assert truncated_ideas.truncated is True
+
+    forecast = asyncio.run(
+        adapter.keyword_forecast(
+            _profile(),
+            "2222222222",
+            keywords=(
+                {"text": "shoes", "matchType": "EXACT"},
+                {"text": "boots", "matchType": "PHRASE"},
+            ),
+            language_id="1000",
+            geo_target_ids=("2840",),
+            date_from="2026-01-01",
+            date_to="2026-01-31",
+            daily_budget_micros=1_000_000,
+            max_cpc_bid_micros=100_000,
+            currency_code="USD",
+        )
+    )
+    assert forecast == ({"clicks": 1.0},)
+    forecast_request = service.forecast_requests[0]
+    assert forecast_request.currency_code == "USD"
+    assert forecast_request.campaign.ad_groups[0].keywords[0].text == "shoes"
+    assert forecast_request.campaign.ad_groups[0].keywords[0].match_type.name == "EXACT"
+    assert forecast_request.campaign.ad_groups[0].keywords[1].text == "boots"
+    assert forecast_request.campaign.ad_groups[0].keywords[1].match_type.name == "PHRASE"

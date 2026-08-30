@@ -13,6 +13,7 @@ from typing import Any, TextIO
 
 import pytest
 
+import google_ads_mcp.cli as cli_module
 from google_ads_mcp.cli import main
 
 _SAFE_ENVIRONMENT_KEYS = (
@@ -101,7 +102,7 @@ def _run_stdio_until(
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     main(["version"])
-    assert "0.1.0" in capsys.readouterr().out
+    assert "0.2.0" in capsys.readouterr().out
 
 
 def test_cli_config_init_validate(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -121,6 +122,188 @@ def test_cli_failure_is_stderr_only(tmp_path: Path, capsys: pytest.CaptureFixtur
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "security_policy_violation" in captured.err
+
+
+def _write_cli_config(path: Path, *, keyring: bool = True, profiles: int = 1) -> None:
+    auth: dict[str, object] = {"type": "adc"}
+    if keyring:
+        auth["developerTokenKeyring"] = True
+    else:
+        auth["developerTokenEnv"] = "SYNTHETIC_TOKEN"
+    path.write_text(
+        json.dumps(
+            {
+                "profiles": [
+                    {
+                        "name": f"operator-{index}",
+                        "loginCustomerId": "1111111111",
+                        "defaultCustomerId": "2222222222",
+                        "auth": auth,
+                        "allowWrites": index == 0,
+                    }
+                    for index in range(profiles)
+                ]
+            }
+        )
+    )
+    path.chmod(0o600)
+
+
+def test_cli_onboard_secrets_profiles_and_client_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = tmp_path / "accounts.json"
+    _write_cli_config(config)
+    stored: list[tuple[str, str]] = []
+    monkeypatch.setattr(cli_module.getpass, "getpass", lambda _: "synthetic-token")
+    monkeypatch.setattr(
+        cli_module.SystemSecretStore,
+        "set_developer_token",
+        lambda self, profile, token: stored.append((profile, token)),
+    )
+    main(["--config", str(config), "onboard"])
+    main(
+        [
+            "--config",
+            str(config),
+            "secrets",
+            "set-developer-token",
+            "--profile",
+            "operator-0",
+        ]
+    )
+    main(["--config", str(config), "profiles", "list"])
+    main(["--config", str(config), "client", "install", "--target", "codex"])
+    main(["--config", str(config), "client", "install", "--target", "claude"])
+    output = capsys.readouterr().out
+    assert stored == [("operator-0", "synthetic-token")] * 2
+    assert '"secretValueReturned": false' in output
+    assert '"allowWrites": true' in output
+    assert '"target": "codex"' in output
+    assert '"target": "claude"' in output
+    assert "synthetic-token" not in output
+
+
+def test_cli_onboard_requires_profile_and_keyring(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = tmp_path / "accounts.json"
+    _write_cli_config(config, profiles=2)
+    with pytest.raises(SystemExit):
+        main(["--config", str(config), "onboard"])
+    _write_cli_config(config, keyring=False)
+    with pytest.raises(SystemExit):
+        main(["--config", str(config), "onboard", "--profile", "operator-0"])
+    assert "profile_required" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="policy writes fail closed without Windows ACL verification"
+)
+def test_cli_policy_lifecycle(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    empty = tmp_path / "empty-policies.json"
+    main(["--policies", str(empty), "policies", "init"])
+    main(["--policies", str(empty), "policies", "validate"])
+    main(["--policies", str(empty), "policies", "status"])
+    policy = tmp_path / "write-policies.json"
+    policy.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "policies": [
+                    {
+                        "policyId": "safe",
+                        "profile": "operator-0",
+                        "customerId": "2222222222",
+                        "currencyCode": "USD",
+                        "permissions": ["campaign_status"],
+                        "allowCampaignEnable": False,
+                        "campaignIds": [],
+                        "limits": {
+                            "maxAggregateDailyBudgetMicros": "10000000",
+                            "maxCampaignDailyBudgetMicros": "5000000",
+                            "maxSpendChangeMicrosPerOperation": "1000000",
+                            "maxBidMicros": "500000",
+                        },
+                        "approval": {
+                            "status": "pending",
+                            "approvedAt": None,
+                            "expiresAt": None,
+                            "policyFingerprint": None,
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    policy.chmod(0o600)
+    main(["--policies", str(policy), "policies", "approve", "--policy-id", "safe"])
+    main(["--policies", str(policy), "policies", "revoke", "--policy-id", "safe"])
+    assert '"status": "approved"' in capsys.readouterr().out
+
+
+def test_cli_operations_auth_accounts_and_serve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = tmp_path / "accounts.json"
+    _write_cli_config(config)
+
+    class FakeService:
+        async def auth_check(self, profile: str, customer_id: str) -> dict[str, object]:
+            return {"status": "ok", "profile": profile, "customerId": customer_id}
+
+        async def customers_list(self, profile: str) -> dict[str, object]:
+            return {"status": "ok", "profile": profile}
+
+    class FakeOperator:
+        async def list(self, profile: str | None, limit: int) -> dict[str, object]:
+            return {"status": "ok", "action": "list", "limit": limit}
+
+        async def inspect(self, operation_id: str) -> dict[str, object]:
+            return {"status": "ok", "action": "inspect", "id": operation_id}
+
+        async def verify(self, operation_id: str) -> dict[str, object]:
+            return {"status": "ok", "action": "verify", "id": operation_id}
+
+    monkeypatch.setattr(cli_module, "GoogleAdsReadAdapter", lambda: object())
+    monkeypatch.setattr(cli_module, "GoogleAdsService", lambda *args: FakeService())
+    monkeypatch.setattr(cli_module, "_service", lambda _: FakeService())
+    monkeypatch.setattr(cli_module, "_operator", lambda *args: FakeOperator())
+    served: list[tuple[str | None, bool, str | None, str | None]] = []
+    monkeypatch.setattr(
+        cli_module,
+        "serve_stdio",
+        lambda path, allow_writes=False, policy_path=None, state_dir_path=None: served.append(
+            (path, allow_writes, policy_path, state_dir_path)
+        ),
+    )
+    main(["--config", str(config), "auth", "doctor", "--profile", "operator-0"])
+    main(["--config", str(config), "accounts", "discover", "--profile", "operator-0"])
+    main(["--config", str(config), "operations", "list", "--limit", "7"])
+    main(["--config", str(config), "operations", "inspect", "--operation-id", "op-1"])
+    main(["--config", str(config), "operations", "verify", "--operation-id", "op-1"])
+    policy_path = str(tmp_path / "policies.json")
+    state_path = str(tmp_path / "state")
+    main(
+        [
+            "--config",
+            str(config),
+            "--policies",
+            policy_path,
+            "--state-dir",
+            state_path,
+            "serve",
+            "--stdio",
+            "--allow-writes",
+        ]
+    )
+    output = capsys.readouterr().out
+    assert '"action": "list"' in output
+    assert '"action": "inspect"' in output
+    assert '"action": "verify"' in output
+    assert served == [(str(config), True, policy_path, state_path)]
 
 
 def test_black_box_stdio_initialize_and_tools_list(tmp_path: Path) -> None:
@@ -144,7 +327,7 @@ def test_black_box_stdio_initialize_and_tools_list(tmp_path: Path) -> None:
     lines, stdout, stderr = _run_stdio_until(config, messages, {1, 2})
     assert {line.get("id") for line in lines} == {1, 2}
     tools = next(line["result"]["tools"] for line in lines if line.get("id") == 2)
-    assert len(tools) == 13
+    assert len(tools) == 45
     assert all(line.startswith("{") for line in stdout.splitlines())
     assert "starting Google Ads MCP" in stderr
 

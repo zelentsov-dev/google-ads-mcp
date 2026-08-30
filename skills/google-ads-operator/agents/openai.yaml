@@ -1,13 +1,13 @@
 interface:
   display_name: "Google Ads Operator"
-  short_description: "Safe read-only Google Ads analysis"
-  default_prompt: "Use $google-ads-operator to audit a Google Ads account with explicit evidence and no mutations."
+  short_description: "Safe Google Ads analysis and typed operations"
+  default_prompt: "Use $google-ads-operator to audit Google Ads evidence and, only when explicitly authorized, preview and verify a policy-gated typed operation."
 
 dependencies:
   tools:
     - type: "mcp"
       value: "google-ads"
-      description: "Read-only Google Ads MCP server"
+      description: "Google Ads analysis and policy-gated Safe Operator MCP server"
       transport: "stdio"
 
 policy:

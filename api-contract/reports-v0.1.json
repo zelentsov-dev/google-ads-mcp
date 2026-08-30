@@ -17,8 +17,7 @@
       "allowedSegments": [
         "segments.date",
         "segments.device",
-        "segments.ad_network_type",
-        "segments.conversion_action"
+        "segments.ad_network_type"
       ],
       "campaignTypes": [],
       "description": "Generic performance for every campaign type.",
@@ -68,11 +67,11 @@
         "segments.device"
       ],
       "campaignTypes": [],
-      "description": "Campaign criterion serving performance.",
+      "description": "Keyword criterion serving performance.",
       "modeledConversions": false,
       "name": "criteria_performance",
       "requiresDateRange": true,
-      "resource": "campaign_criterion"
+      "resource": "keyword_view"
     },
     {
       "allowedSegments": [

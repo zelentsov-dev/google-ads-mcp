@@ -9,45 +9,79 @@
     ],
     "optional": [
       "error",
-      "nextCursor"
+      "nextCursor",
+      "operation"
     ],
     "statuses": [
       "ok",
       "partial",
       "not_supported",
-      "unavailable"
+      "unavailable",
+      "blocked"
     ]
   },
   "tools": [
     {
       "name": "auth_check",
       "description": "Verify read-only authentication for one explicit profile and customer.",
-      "inputProperties": ["customerId", "profile"],
-      "inputRequired": ["profile", "customerId"]
+      "inputProperties": [
+        "customerId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId"
+      ]
     },
     {
       "name": "customers_list",
       "description": "List customer resource names accessible to an explicit profile.",
-      "inputProperties": ["cursor", "pageSize", "profile"],
-      "inputRequired": ["profile"]
+      "inputProperties": [
+        "cursor",
+        "pageSize",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile"
+      ]
     },
     {
       "name": "customer_get",
       "description": "Read one customer's identity, currency, time zone, manager and test flags.",
-      "inputProperties": ["customerId", "profile"],
-      "inputRequired": ["profile", "customerId"]
+      "inputProperties": [
+        "customerId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId"
+      ]
     },
     {
       "name": "customer_hierarchy",
       "description": "Read the bounded customer-client hierarchy for a manager account.",
-      "inputProperties": ["cursor", "customerId", "pageSize", "profile"],
-      "inputRequired": ["profile", "customerId"]
+      "inputProperties": [
+        "cursor",
+        "customerId",
+        "pageSize",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId"
+      ]
     },
     {
       "name": "account_health",
       "description": "Read a bounded account configuration health snapshot.",
-      "inputProperties": ["customerId", "profile"],
-      "inputRequired": ["profile", "customerId"]
+      "inputProperties": [
+        "customerId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId"
+      ]
     },
     {
       "name": "campaigns_query",
@@ -60,7 +94,10 @@
         "profile",
         "statuses"
       ],
-      "inputRequired": ["profile", "customerId"]
+      "inputRequired": [
+        "profile",
+        "customerId"
+      ]
     },
     {
       "name": "campaign_inventory",
@@ -73,19 +110,38 @@
         "profile",
         "resourceType"
       ],
-      "inputRequired": ["profile", "customerId", "campaignId", "resourceType"]
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "campaignId",
+        "resourceType"
+      ]
     },
     {
       "name": "resource_metadata",
       "description": "Read Google Ads field metadata for up to 200 explicit field names.",
-      "inputProperties": ["customerId", "fieldNames", "profile"],
-      "inputRequired": ["profile", "customerId", "fieldNames"]
+      "inputProperties": [
+        "customerId",
+        "fieldNames",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "fieldNames"
+      ]
     },
     {
       "name": "reports_catalog",
       "description": "List the fixed read-only report templates and their limitations.",
-      "inputProperties": ["customerId", "profile"],
-      "inputRequired": ["profile", "customerId"]
+      "inputProperties": [
+        "customerId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId"
+      ]
     },
     {
       "name": "report_run",
@@ -101,7 +157,13 @@
         "report",
         "segments"
       ],
-      "inputRequired": ["profile", "customerId", "report", "dateFrom", "dateTo"]
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "report",
+        "dateFrom",
+        "dateTo"
+      ]
     },
     {
       "name": "change_events_query",
@@ -115,19 +177,641 @@
         "pageSize",
         "profile"
       ],
-      "inputRequired": ["profile", "customerId", "dateFrom", "dateTo"]
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "dateFrom",
+        "dateTo"
+      ]
     },
     {
       "name": "gaql_validate",
       "description": "Validate one bounded SELECT-only GAQL query without executing it.",
-      "inputProperties": ["customerId", "profile", "query"],
-      "inputRequired": ["profile", "customerId", "query"]
+      "inputProperties": [
+        "customerId",
+        "profile",
+        "query"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "query"
+      ]
     },
     {
       "name": "gaql_search",
       "description": "Execute one validated SELECT-only GAQL query without a cursor.",
-      "inputProperties": ["customerId", "profile", "query"],
-      "inputRequired": ["profile", "customerId", "query"]
+      "inputProperties": [
+        "customerId",
+        "profile",
+        "query"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "query"
+      ]
+    },
+    {
+      "name": "server_info",
+      "description": "Describe the pinned server, API, and write-safety contract.",
+      "inputProperties": [],
+      "inputRequired": []
+    },
+    {
+      "name": "profiles_list",
+      "description": "List configured profile identities and write opt-in state without secrets.",
+      "inputProperties": [],
+      "inputRequired": []
+    },
+    {
+      "name": "campaign_diagnostics",
+      "description": "Read one campaign's serving, budget, bidding, and primary status evidence.",
+      "inputProperties": [
+        "campaignId",
+        "customerId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "campaignId"
+      ]
+    },
+    {
+      "name": "search_terms_report",
+      "description": "Run the fixed Search and Shopping search-terms report.",
+      "inputProperties": [
+        "campaignIds",
+        "customerId",
+        "dateFrom",
+        "dateTo",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "dateFrom",
+        "dateTo"
+      ]
+    },
+    {
+      "name": "asset_performance_report",
+      "description": "Run the fixed asset-performance report where Google exposes metrics.",
+      "inputProperties": [
+        "campaignIds",
+        "customerId",
+        "dateFrom",
+        "dateTo",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "dateFrom",
+        "dateTo"
+      ]
+    },
+    {
+      "name": "conversion_goals_list",
+      "description": "List customer conversion-goal bidding configuration.",
+      "inputProperties": [
+        "customerId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId"
+      ]
+    },
+    {
+      "name": "recommendations_list",
+      "description": "List Google recommendations as untrusted proposals, never commands.",
+      "inputProperties": [
+        "campaignIds",
+        "customerId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId"
+      ]
+    },
+    {
+      "name": "keyword_ideas",
+      "description": "Generate bounded keyword ideas from a typed keyword and/or URL seed.",
+      "inputProperties": [
+        "customerId",
+        "geoTargetIds",
+        "keywords",
+        "languageId",
+        "pageUrl",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "languageId",
+        "geoTargetIds"
+      ]
+    },
+    {
+      "name": "forecast_run",
+      "description": "Run a bounded keyword forecast without creating Keyword Plan resources.",
+      "inputProperties": [
+        "customerId",
+        "dailyBudgetMicros",
+        "dateFrom",
+        "dateTo",
+        "geoTargetIds",
+        "keywords",
+        "languageId",
+        "maxCpcBidMicros",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "keywords",
+        "languageId",
+        "geoTargetIds",
+        "dateFrom",
+        "dateTo",
+        "dailyBudgetMicros",
+        "maxCpcBidMicros"
+      ]
+    },
+    {
+      "name": "search_campaign_create_preview",
+      "description": "Validate and preview one atomic paused Search campaign creation.",
+      "inputProperties": [
+        "adGroupName",
+        "containsEuPoliticalAdvertising",
+        "cpcBidMicros",
+        "customerId",
+        "dailyBudgetMicros",
+        "descriptions",
+        "finalUrl",
+        "headlines",
+        "keywordMatchType",
+        "keywords",
+        "name",
+        "policyId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "name",
+        "dailyBudgetMicros",
+        "adGroupName",
+        "cpcBidMicros",
+        "keywords",
+        "keywordMatchType",
+        "finalUrl",
+        "headlines",
+        "descriptions",
+        "containsEuPoliticalAdvertising"
+      ]
+    },
+    {
+      "name": "performance_max_campaign_create_preview",
+      "description": "Validate and preview one atomic paused Performance Max campaign creation.",
+      "inputProperties": [
+        "assetGroupName",
+        "businessName",
+        "containsEuPoliticalAdvertising",
+        "customerId",
+        "dailyBudgetMicros",
+        "descriptions",
+        "finalUrl",
+        "headlines",
+        "landscapeImageAssets",
+        "logoAssets",
+        "longHeadlines",
+        "name",
+        "policyId",
+        "profile",
+        "squareImageAssets",
+        "youtubeVideoAssets"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "name",
+        "dailyBudgetMicros",
+        "assetGroupName",
+        "finalUrl",
+        "businessName",
+        "headlines",
+        "longHeadlines",
+        "descriptions",
+        "landscapeImageAssets",
+        "squareImageAssets",
+        "logoAssets",
+        "containsEuPoliticalAdvertising"
+      ]
+    },
+    {
+      "name": "app_campaign_create_preview",
+      "description": "Validate and preview one paused App installs campaign creation.",
+      "inputProperties": [
+        "adGroupName",
+        "adName",
+        "appId",
+        "appStore",
+        "containsEuPoliticalAdvertising",
+        "customerId",
+        "dailyBudgetMicros",
+        "descriptions",
+        "headlines",
+        "imageAssets",
+        "name",
+        "policyId",
+        "profile",
+        "targetCpaMicros",
+        "youtubeVideoAssets"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "name",
+        "dailyBudgetMicros",
+        "targetCpaMicros",
+        "appId",
+        "appStore",
+        "adGroupName",
+        "adName",
+        "headlines",
+        "descriptions",
+        "containsEuPoliticalAdvertising"
+      ]
+    },
+    {
+      "name": "campaign_update_preview",
+      "description": "Validate and preview bounded campaign identity and schedule fields.",
+      "inputProperties": [
+        "campaignId",
+        "customerId",
+        "endDateTime",
+        "finalUrlSuffix",
+        "name",
+        "policyId",
+        "profile",
+        "startDateTime"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "campaignId"
+      ]
+    },
+    {
+      "name": "campaign_targeting_preview",
+      "description": "Validate and preview one atomic presence-only campaign targeting setup.",
+      "inputProperties": [
+        "campaignId",
+        "customerId",
+        "geoTargetIds",
+        "languageIds",
+        "policyId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "campaignId",
+        "geoTargetIds",
+        "languageIds"
+      ]
+    },
+    {
+      "name": "campaign_status_preview",
+      "description": "Validate and preview ENABLED or PAUSED campaign status only.",
+      "inputProperties": [
+        "campaignId",
+        "customerId",
+        "policyId",
+        "profile",
+        "status"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "campaignId",
+        "status"
+      ]
+    },
+    {
+      "name": "campaign_budget_preview",
+      "description": "Validate and preview one campaign budget amount update.",
+      "inputProperties": [
+        "budgetId",
+        "customerId",
+        "dailyBudgetMicros",
+        "policyId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "budgetId",
+        "dailyBudgetMicros"
+      ]
+    },
+    {
+      "name": "campaign_bidding_preview",
+      "description": "Validate and preview one explicitly typed campaign bidding strategy.",
+      "inputProperties": [
+        "campaignId",
+        "customerId",
+        "enhancedCpcEnabled",
+        "policyId",
+        "profile",
+        "strategy",
+        "targetCpaMicros",
+        "targetRoas"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "campaignId",
+        "strategy"
+      ]
+    },
+    {
+      "name": "ad_group_create_preview",
+      "description": "Validate and preview one paused Search ad group creation.",
+      "inputProperties": [
+        "campaignId",
+        "cpcBidMicros",
+        "customerId",
+        "name",
+        "policyId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "campaignId",
+        "name"
+      ]
+    },
+    {
+      "name": "ad_group_update_preview",
+      "description": "Validate and preview bounded ad group field updates.",
+      "inputProperties": [
+        "adGroupId",
+        "cpcBidMicros",
+        "customerId",
+        "name",
+        "policyId",
+        "profile",
+        "status"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "adGroupId"
+      ]
+    },
+    {
+      "name": "keyword_create_preview",
+      "description": "Validate and preview one paused positive ad group keyword.",
+      "inputProperties": [
+        "adGroupId",
+        "cpcBidMicros",
+        "customerId",
+        "matchType",
+        "policyId",
+        "profile",
+        "text"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "adGroupId",
+        "text",
+        "matchType"
+      ]
+    },
+    {
+      "name": "negative_keyword_create_preview",
+      "description": "Validate and preview one typed campaign or ad group negative keyword.",
+      "inputProperties": [
+        "adGroupId",
+        "campaignId",
+        "customerId",
+        "level",
+        "matchType",
+        "policyId",
+        "profile",
+        "text"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "level",
+        "text",
+        "matchType"
+      ]
+    },
+    {
+      "name": "criterion_update_preview",
+      "description": "Validate and preview status or bid updates for one known criterion.",
+      "inputProperties": [
+        "adGroupId",
+        "cpcBidMicros",
+        "criterionId",
+        "customerId",
+        "level",
+        "policyId",
+        "profile",
+        "status"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "level",
+        "criterionId"
+      ]
+    },
+    {
+      "name": "asset_create_preview",
+      "description": "Validate and preview one typed text or YouTube video asset.",
+      "inputProperties": [
+        "assetType",
+        "customerId",
+        "name",
+        "policyId",
+        "profile",
+        "text",
+        "youtubeVideoId"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "name",
+        "assetType"
+      ]
+    },
+    {
+      "name": "asset_link_preview",
+      "description": "Validate and preview one typed campaign, ad group, or asset group link.",
+      "inputProperties": [
+        "assetResourceName",
+        "customerId",
+        "fieldType",
+        "ownerId",
+        "ownerType",
+        "policyId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "ownerType",
+        "ownerId",
+        "assetResourceName",
+        "fieldType"
+      ]
+    },
+    {
+      "name": "asset_group_create_preview",
+      "description": "Validate one atomic PMax asset group and complete asset-link set.",
+      "inputProperties": [
+        "assetResourceNames",
+        "campaignId",
+        "customerId",
+        "fieldTypes",
+        "finalUrl",
+        "name",
+        "policyId",
+        "profile"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "campaignId",
+        "name",
+        "finalUrl",
+        "assetResourceNames",
+        "fieldTypes"
+      ]
+    },
+    {
+      "name": "ad_create_preview",
+      "description": "Validate and preview one paused responsive Search or App ad.",
+      "inputProperties": [
+        "adGroupId",
+        "adType",
+        "customerId",
+        "descriptions",
+        "finalUrl",
+        "headlines",
+        "imageAssets",
+        "name",
+        "policyId",
+        "profile",
+        "youtubeVideoAssets"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "adGroupId",
+        "name",
+        "adType",
+        "headlines",
+        "descriptions"
+      ]
+    },
+    {
+      "name": "recommendation_apply_preview",
+      "description": "Fail closed unless Google exposes validate_only for this recommendation action.",
+      "inputProperties": [
+        "customerId",
+        "policyId",
+        "profile",
+        "recommendationResourceName"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "recommendationResourceName"
+      ]
+    },
+    {
+      "name": "recommendation_dismiss_preview",
+      "description": "Fail closed unless Google exposes validate_only for this recommendation action.",
+      "inputProperties": [
+        "customerId",
+        "policyId",
+        "profile",
+        "recommendationResourceName"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "recommendationResourceName"
+      ]
+    },
+    {
+      "name": "operations_apply",
+      "description": "Apply exactly one signed, non-expired, drift-free preview receipt.",
+      "inputProperties": [
+        "receipt"
+      ],
+      "inputRequired": [
+        "receipt"
+      ]
+    },
+    {
+      "name": "operations_inspect",
+      "description": "Inspect one durable operation record without exposing its receipt.",
+      "inputProperties": [
+        "operationId"
+      ],
+      "inputRequired": [
+        "operationId"
+      ]
+    },
+    {
+      "name": "operations_verify",
+      "description": "Directly re-read known targets and reconcile an unresolved write.",
+      "inputProperties": [
+        "operationId"
+      ],
+      "inputRequired": [
+        "operationId"
+      ]
+    },
+    {
+      "name": "operations_list",
+      "description": "List bounded durable operation records without secrets or raw receipts.",
+      "inputProperties": [
+        "limit",
+        "profile"
+      ],
+      "inputRequired": []
     }
   ]
 }
