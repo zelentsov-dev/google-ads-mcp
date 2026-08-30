@@ -8,18 +8,52 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  preflight:
+    name: Linux / Python 3.12 / full gate
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
+        with:
+          version: "0.11.13"
+          enable-cache: true
+      - run: uv sync --frozen --all-groups
+      - run: uv run --frozen ruff check .
+      - run: uv run --frozen pyright --pythonplatform Linux
+      - run: uv run --frozen pyright --pythonplatform Darwin
+      - run: uv run --frozen pyright --pythonplatform Windows
+      - run: uv run --frozen pytest
+      - run: uv run --frozen python scripts/verify_critical_coverage.py
+      - run: uv run --frozen python scripts/validate_read_only.py
+      - run: uv run --frozen python scripts/validate_gaql_templates.py
+      - run: uv run --frozen python scripts/validate_manifests.py
+
+  compatibility:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    needs: preflight
     runs-on: ${{ matrix.os }}
     env:
       UV_PYTHON: ${{ matrix.python }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
-        os: [ubuntu-latest]
-        python: ["3.11", "3.12", "3.13"]
         include:
+          - os: ubuntu-latest
+            python: "3.11"
+          - os: ubuntu-latest
+            python: "3.13"
           - os: macos-latest
             python: "3.12"
           - os: windows-latest
@@ -36,18 +70,11 @@ jobs:
           version: "0.11.13"
           enable-cache: true
       - run: uv sync --frozen --all-groups
-      - run: uv run --frozen ruff check .
-      - run: uv run --frozen pyright
       - run: uv run --frozen pytest
-      - if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
-        run: uv run --frozen python scripts/verify_critical_coverage.py
-      - run: uv run --frozen python scripts/validate_read_only.py
-      - run: uv run --frozen python scripts/validate_gaql_templates.py
-      - run: uv run --frozen python scripts/validate_manifests.py
 
   build:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [preflight, compatibility]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -58,6 +85,7 @@ jobs:
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78
         with:
           version: "0.11.13"
+          enable-cache: true
       - run: uv sync --frozen --all-groups
       - run: uv run --frozen python -m build
       - run: uv run --frozen python scripts/package_plugin.py dist/google-ads-mcp-plugin-0.2.0.zip

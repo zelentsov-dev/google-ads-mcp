@@ -20,6 +20,7 @@ REQUIRED_WORKFLOWS = verify_release_source.REQUIRED_WORKFLOWS
 verify_workflows = verify_release_source.verify_workflows
 
 SHA = "a" * 40
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _run(**changes: object) -> dict[str, object]:
@@ -81,3 +82,28 @@ def test_release_source_fails_closed_when_one_workflow_is_missing() -> None:
 
     with pytest.raises(SystemExit, match=r"security\.yml"):
         verify_workflows("owner/repository", SHA, "token", request_json=request_json)
+
+
+def test_ci_uses_cross_platform_preflight_before_compatibility_runners() -> None:
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    assert "group: ci-${{ github.ref }}" in ci
+    assert "cancel-in-progress: true" in ci
+    assert "uv run --frozen pyright --pythonplatform Linux" in ci
+    assert "uv run --frozen pyright --pythonplatform Darwin" in ci
+    assert "uv run --frozen pyright --pythonplatform Windows" in ci
+    assert "compatibility:\n" in ci
+    assert "needs: preflight" in ci
+    assert "fail-fast: true" in ci
+    assert "needs: [preflight, compatibility]" in ci
+    assert ci.count("enable-cache: true") == 3
+
+
+@pytest.mark.parametrize("workflow", ["security.yml", "codeql.yml"])
+def test_expensive_workflows_cancel_superseded_runs(workflow: str) -> None:
+    text = (ROOT / ".github" / "workflows" / workflow).read_text()
+    assert "cancel-in-progress: true" in text
+
+
+def test_security_dependency_gate_uses_uv_cache() -> None:
+    security = (ROOT / ".github" / "workflows" / "security.yml").read_text()
+    assert "enable-cache: true" in security

@@ -4,7 +4,8 @@ Automated tests use synthetic fixtures. They prove interface, policy, receipt, j
 
 ## Automated gates
 
-- Ruff, Pyright, the full test suite, and at least 90% overall branch coverage pass.
+- Ruff, Pyright for Linux/Darwin/Windows, the full test suite, and at least 90% overall branch coverage pass before any remote branch update.
+- CI runs the Linux 3.12 full gate before paid compatibility runners, cancels superseded runs, and performs one compatibility test job for Linux 3.11/3.13, macOS 3.12, and Windows 3.12.
 - Config, GAQL, journal, operator, typed-plan, policy, receipt, secret-storage, mutation-adapter, security, and stdout-boundary modules have 100% branch coverage.
 - Golden `tools/list` and public schemas contain exactly 45 tools. Only `operations_apply` accepts a receipt; no tool accepts a raw mutation or Google service name.
 - Static analysis proves the write adapter uses only its allowlisted service and operation types and rejects billing, links, users, offline jobs, uploads, and User Data services.

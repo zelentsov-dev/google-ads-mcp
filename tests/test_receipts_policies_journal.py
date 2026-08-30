@@ -694,6 +694,11 @@ def test_journal_secure_open_identity_failure_branches(
     path.chmod(0o600)
 
     with monkeypatch.context() as patch:
+        patch.setattr(journal_module.os, "name", "nt")
+        with pytest.raises(SecurityError, match="Windows ACL"):
+            journal_module._open_journal(path, create=False)
+
+    with monkeypatch.context() as patch:
         patch.setattr(journal_module.os, "O_NOFOLLOW", 0)
         with pytest.raises(SecurityError, match="opening is unavailable"):
             journal_module._open_journal(path, create=False)

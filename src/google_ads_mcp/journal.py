@@ -71,6 +71,11 @@ def _decode(value: str) -> dict[str, Any]:
 
 
 def _open_journal(path: Path, *, create: bool) -> tuple[int, os.stat_result]:
+    if os.name == "nt":
+        raise SecurityError(
+            "Windows ACL verification is unavailable; write operations are disabled",
+            code="writes_not_secure",
+        )
     nofollow = getattr(os, "O_NOFOLLOW", 0)
     if not nofollow:
         raise SecurityError("Secure journal opening is unavailable")
@@ -149,6 +154,9 @@ class OperationRecord:
 
 
 class OperationJournal:
+    path: Path
+    _identity: tuple[int, int]
+
     def __init__(self, state_dir: Path) -> None:
         if os.name == "nt":
             raise SecurityError(

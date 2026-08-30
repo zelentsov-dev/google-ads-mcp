@@ -498,7 +498,9 @@ The repository intentionally does not create or modify a personal marketplace en
 
 ```bash
 uv run --frozen ruff check .
-uv run --frozen pyright
+uv run --frozen pyright --pythonplatform Linux
+uv run --frozen pyright --pythonplatform Darwin
+uv run --frozen pyright --pythonplatform Windows
 uv run --frozen pytest
 uv run --frozen python scripts/verify_critical_coverage.py
 uv run --frozen python scripts/validate_read_only.py
