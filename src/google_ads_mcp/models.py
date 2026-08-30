@@ -1,10 +1,22 @@
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal, NotRequired
+from typing import Annotated, Any, Literal, NotRequired
 
+from pydantic import Field
 from typing_extensions import TypedDict
 
-Status = Literal["ok", "partial", "not_supported", "unavailable"]
+Status = Literal["ok", "partial", "not_supported", "unavailable", "blocked"]
+
+
+class ForecastKeyword(TypedDict):
+    text: str
+    matchType: Literal["EXACT", "PHRASE", "BROAD"]
+
+
+GeoTargetIds = Annotated[
+    list[str],
+    Field(min_length=1, max_length=20, json_schema_extra={"uniqueItems": True}),
+]
 
 
 class Money(TypedDict):
@@ -46,6 +58,7 @@ class ToolResponse(TypedDict):
     truncated: bool
     nextCursor: NotRequired[str]
     error: NotRequired[ErrorDetail]
+    operation: NotRequired[dict[str, Any]]
 
 
 @dataclass(frozen=True, slots=True)

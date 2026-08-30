@@ -12,11 +12,15 @@ Revoke or rotate any credential that may have been disclosed before reporting it
 
 ## Security invariants
 
-- The v0.1 server is read-only and stdio-only.
-- `allowWrites` is structurally fixed to `false`.
+- The v0.2 server is local and stdio-only; it contains no hosted transport or background scheduler.
+- Read-only is the default. Writes require runtime, profile, and approved-policy opt-ins simultaneously.
 - Credentials are referenced, not embedded in `accounts.json`.
-- Credential and config files must be owner-only on POSIX systems.
+- Developer tokens can be stored through hidden input in a verified system keyring. Credential, config, policy, signing-key, and journal files must be owner-only on POSIX systems; writes fail closed when local protection cannot be verified.
+- No public tool accepts an arbitrary protobuf, raw mutate payload, or Google service name. The write adapter has a static service, operation, and resource-field allowlist.
+- Billing, account linking, user access, user lists, offline jobs, conversion uploads, Data Manager/User Data services, and irreversible removal are outside the v0.2 boundary.
+- Preview requires current-state reads, policy and monetary enforcement, Google `validate_only`, and a signed one-time ten-minute receipt. Apply accepts only the receipt.
+- Durable `applying` intent precedes the Google RPC. Ambiguous writes are never retried and block related work until direct verification.
 - Tool output and errors never include raw Google response envelopes, request headers, queries from failed requests, YAML content, OAuth material, or local config content.
 - Account-provided text is untrusted and must never be interpreted as agent instructions.
 
-If a future change requires any write capability, it must be a new explicitly reviewed product phase with separate permissions and threat-model updates. It must not be smuggled into a patch release.
+Optimizer, autonomous cycle, attribution uploads, broader campaign creators, remote transports, and schedulers require separately reviewed future product phases. They must not be smuggled into a patch release.

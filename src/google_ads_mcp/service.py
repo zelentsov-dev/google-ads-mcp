@@ -3,23 +3,30 @@ from __future__ import annotations
 import re
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from google_ads_mcp.adapter import AdapterSearchResult, ReadAdapter
 from google_ads_mcp.config import AccountsConfig, Profile, normalize_customer_id
-from google_ads_mcp.constants import MAX_CHANGE_EVENT_DAYS, MAX_PAGE_ITEMS
+from google_ads_mcp.constants import (
+    API_VERSION,
+    GOOGLE_ADS_CLIENT_VERSION,
+    MAX_CHANGE_EVENT_DAYS,
+    MAX_PAGE_ITEMS,
+    VERSION,
+)
 from google_ads_mcp.cursors import CursorStore
 from google_ads_mcp.dates import validate_date_range
 from google_ads_mcp.errors import AdapterError, ValidationError
 from google_ads_mcp.gaql import validate_gaql
-from google_ads_mcp.models import ResponseEnvelope, Status, ToolResponse
+from google_ads_mcp.models import ForecastKeyword, ResponseEnvelope, Status, ToolResponse
 from google_ads_mcp.reports import PINNED_CAMPAIGN_TYPES, build_report_query, reports_catalog
 from google_ads_mcp.security import redact_untrusted, stable_fingerprint
 
 _CAMPAIGN_STATUSES = frozenset({"ENABLED", "PAUSED", "REMOVED", "UNKNOWN", "UNSPECIFIED"})
+_MAX_GEO_TARGET_IDS = 20
 _RESOURCE_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
     "status": (
         "campaign",
@@ -108,6 +115,21 @@ _RESOURCE_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
 }
 
 
+def _geo_target_ids(values: Sequence[object]) -> tuple[str, ...]:
+    if not values or len(values) > _MAX_GEO_TARGET_IDS:
+        raise ValidationError(
+            f"geoTargetIds must contain between 1 and {_MAX_GEO_TARGET_IDS} values"
+        )
+    if any(
+        not isinstance(item, str) or not item.isascii() or not item.isdigit()
+        for item in values
+    ):
+        raise ValidationError("geoTargetIds must contain ASCII numeric IDs")
+    if len(set(values)) != len(values):
+        raise ValidationError("geoTargetIds must not contain duplicates")
+    return tuple(cast(str, item) for item in values)
+
+
 @dataclass(frozen=True, slots=True)
 class _CustomerContext:
     currency_code: str | None
@@ -136,6 +158,18 @@ class GoogleAdsService:
         if not name:
             raise ValidationError("profile is required")
         return self._config.profile(name)
+
+    def profile(self, name: str) -> Profile:
+        return self._profile(name)
+
+    async def customer_context(self, profile: Profile, customer_id: str) -> dict[str, Any]:
+        selected_customer = self._customer_id(customer_id)
+        context = await self._customer_context(profile, selected_customer)
+        return {
+            "currencyCode": context.currency_code,
+            "timeZone": context.time_zone,
+            "testAccount": context.test_account,
+        }
 
     @staticmethod
     def _customer_id(value: str) -> str:
@@ -282,6 +316,45 @@ class GoogleAdsService:
             items=[{"authenticated": bool(result.items), "readOnly": True}],
         )
 
+    async def server_info(self) -> ToolResponse:
+        if not self._config.profiles:
+            raise ValidationError("At least one configured profile is required")
+        return await self._envelope(
+            self._config.profiles[0],
+            None,
+            items=[
+                {
+                    "version": VERSION,
+                    "apiVersion": API_VERSION,
+                    "googleAdsClientVersion": GOOGLE_ADS_CLIENT_VERSION,
+                    "baselineReadTools": 13,
+                    "readTools": 22,
+                    "writesRequireRuntimeOptIn": True,
+                    "receiptTtlSeconds": 600,
+                }
+            ],
+            resolve_context=False,
+        )
+
+    async def profiles_list(self) -> ToolResponse:
+        if not self._config.profiles:
+            raise ValidationError("At least one configured profile is required")
+        return await self._envelope(
+            self._config.profiles[0],
+            None,
+            items=[
+                {
+                    "name": item.name,
+                    "loginCustomerId": item.login_customer_id,
+                    "defaultCustomerId": item.default_customer_id,
+                    "authType": item.auth.type,
+                    "allowWrites": item.allow_writes,
+                }
+                for item in self._config.profiles
+            ],
+            resolve_context=False,
+        )
+
     async def customers_list(
         self,
         profile: str,
@@ -405,7 +478,8 @@ class GoogleAdsService:
         query = (
             "SELECT campaign.id, campaign.name, campaign.status, campaign.serving_status, "
             "campaign.primary_status, campaign.advertising_channel_type, "
-            "campaign.advertising_channel_sub_type, campaign.start_date, campaign.end_date, "
+            "campaign.advertising_channel_sub_type, campaign.start_date_time, "
+            "campaign.end_date_time, "
             "campaign.campaign_budget, campaign.bidding_strategy_type "
             f"FROM campaign{where} LIMIT 1000"
         )
@@ -490,6 +564,250 @@ class GoogleAdsService:
         selected = self._profile(profile)
         customer = self._customer_id(customer_id)
         return await self._envelope(selected, customer, items=reports_catalog())
+
+    async def campaign_diagnostics(
+        self, profile: str, customer_id: str, campaign_id: str
+    ) -> ToolResponse:
+        selected = self._profile(profile)
+        customer = self._customer_id(customer_id)
+        if not campaign_id.isascii() or not campaign_id.isdigit():
+            raise ValidationError("campaignId must contain digits only")
+        result = await self._adapter.search(
+            selected,
+            customer,
+            "SELECT campaign.id, campaign.name, campaign.status, campaign.serving_status, "
+            "campaign.primary_status, campaign.primary_status_reasons, "
+            "campaign.advertising_channel_type, campaign.bidding_strategy_type, "
+            "campaign.campaign_budget, campaign_budget.amount_micros, "
+            "campaign.optimization_score FROM campaign "
+            f"WHERE campaign.id = {campaign_id} LIMIT 1",
+        )
+        return await self._envelope(
+            selected,
+            customer,
+            status="ok" if result.items else "partial",
+            items=list(result.items),
+            partial=not result.items,
+            limitations=[] if result.items else ["campaign_not_found"],
+        )
+
+    async def search_terms_report(
+        self,
+        profile: str,
+        customer_id: str,
+        date_from: str,
+        date_to: str,
+        *,
+        campaign_ids: list[str] | None = None,
+    ) -> ToolResponse:
+        return await self.report_run(
+            profile,
+            customer_id,
+            "search_terms",
+            date_from,
+            date_to,
+            campaign_ids=campaign_ids,
+        )
+
+    async def asset_performance_report(
+        self,
+        profile: str,
+        customer_id: str,
+        date_from: str,
+        date_to: str,
+        *,
+        campaign_ids: list[str] | None = None,
+    ) -> ToolResponse:
+        return await self.report_run(
+            profile,
+            customer_id,
+            "asset_performance",
+            date_from,
+            date_to,
+            campaign_ids=campaign_ids,
+        )
+
+    async def conversion_goals_list(self, profile: str, customer_id: str) -> ToolResponse:
+        selected = self._profile(profile)
+        customer = self._customer_id(customer_id)
+        result = await self._adapter.search(
+            selected,
+            customer,
+            "SELECT customer_conversion_goal.category, customer_conversion_goal.origin, "
+            "customer_conversion_goal.biddable FROM customer_conversion_goal LIMIT 1000",
+        )
+        return await self._envelope(
+            selected,
+            customer,
+            status="partial" if result.truncated else "ok",
+            items=list(result.items),
+            partial=result.truncated,
+            truncated=result.truncated,
+            limitations=[
+                "Customer conversion goals describe bidding configuration, not attribution truth"
+            ],
+        )
+
+    async def recommendations_list(
+        self, profile: str, customer_id: str, campaign_ids: list[str] | None = None
+    ) -> ToolResponse:
+        selected = self._profile(profile)
+        customer = self._customer_id(customer_id)
+        where = ""
+        if campaign_ids:
+            if len(campaign_ids) > 100 or any(
+                not item.isascii() or not item.isdigit() for item in campaign_ids
+            ):
+                raise ValidationError("campaignIds must contain at most 100 numeric IDs")
+            where = f" WHERE campaign.id IN ({', '.join(campaign_ids)})"
+        result = await self._adapter.search(
+            selected,
+            customer,
+            "SELECT recommendation.resource_name, recommendation.type, "
+            "recommendation.dismissed, recommendation.campaign, recommendation.ad_group "
+            f"FROM recommendation{where} LIMIT 1000",
+        )
+        return await self._envelope(
+            selected,
+            customer,
+            status="partial" if result.truncated else "ok",
+            items=list(result.items),
+            partial=result.truncated,
+            truncated=result.truncated,
+            limitations=["Google recommendations are proposals and are never treated as commands"],
+        )
+
+    async def keyword_ideas(
+        self,
+        profile: str,
+        customer_id: str,
+        *,
+        keywords: list[str] | None,
+        page_url: str | None,
+        language_id: str,
+        geo_target_ids: list[str],
+    ) -> ToolResponse:
+        selected = self._profile(profile)
+        customer = self._customer_id(customer_id)
+        normalized = tuple(item.strip() for item in (keywords or ()) if item.strip())
+        if not normalized and not page_url:
+            raise ValidationError("keywords or pageUrl is required")
+        if len(normalized) > 20 or any(len(item) > 80 for item in normalized):
+            raise ValidationError("keywords must contain at most 20 values of up to 80 characters")
+        if page_url is not None and (
+            not page_url.startswith(("https://", "http://")) or len(page_url) > 2048
+        ):
+            raise ValidationError("pageUrl must be a bounded HTTP or HTTPS URL")
+        geo_ids = _geo_target_ids(geo_target_ids)
+        if not language_id.isascii() or not language_id.isdigit():
+            raise ValidationError("languageId must contain an ASCII numeric ID")
+        result = await self._adapter.keyword_ideas(
+            selected,
+            customer,
+            keywords=normalized,
+            page_url=page_url,
+            language_id=language_id,
+            geo_target_ids=geo_ids,
+        )
+        return await self._envelope(
+            selected,
+            customer,
+            status="partial" if result.truncated else "ok",
+            items=list(result.items),
+            partial=result.truncated,
+            truncated=result.truncated,
+            limitations=[
+                "Keyword ideas are estimates and do not guarantee serving results",
+                *(
+                    ["Keyword ideas are limited to the first 200 results"]
+                    if result.truncated
+                    else []
+                ),
+            ],
+        )
+
+    async def forecast_run(
+        self,
+        profile: str,
+        customer_id: str,
+        *,
+        keywords: list[ForecastKeyword],
+        language_id: str,
+        geo_target_ids: list[str],
+        date_from: str,
+        date_to: str,
+        daily_budget_micros: str,
+        max_cpc_bid_micros: str,
+    ) -> ToolResponse:
+        selected = self._profile(profile)
+        customer = self._customer_id(customer_id)
+        start, end = validate_date_range(date_from, date_to, max_days=366)
+        if not keywords or len(keywords) > 200:
+            raise ValidationError("keywords must contain between 1 and 200 typed values")
+        normalized_keywords: list[ForecastKeyword] = []
+        seen_keywords: set[tuple[str, str]] = set()
+        for index, keyword in enumerate(keywords):
+            raw_keyword = cast(object, keyword)
+            if not isinstance(raw_keyword, dict) or set(raw_keyword) != {"text", "matchType"}:
+                raise ValidationError(
+                    f"keywords[{index}] must contain exactly text and matchType"
+                )
+            keyword_map = cast(dict[str, object], raw_keyword)
+            text = keyword_map.get("text")
+            match_type = keyword_map.get("matchType")
+            if (
+                not isinstance(text, str)
+                or not text.strip()
+                or len(text.strip()) > 80
+                or any(ord(character) < 32 for character in text.strip())
+            ):
+                raise ValidationError(f"keywords[{index}].text is invalid")
+            if not isinstance(match_type, str) or match_type not in {
+                "EXACT",
+                "PHRASE",
+                "BROAD",
+            }:
+                raise ValidationError(f"keywords[{index}].matchType is invalid")
+            key = (text.strip().casefold(), match_type)
+            if key in seen_keywords:
+                raise ValidationError("keywords must not contain duplicate text and matchType")
+            seen_keywords.add(key)
+            normalized_keywords.append(
+                cast(ForecastKeyword, {"text": text.strip(), "matchType": match_type})
+            )
+        geo_ids = _geo_target_ids(geo_target_ids)
+        if not language_id.isascii() or not language_id.isdigit():
+            raise ValidationError("languageId must contain an ASCII numeric ID")
+        for field, value in {
+            "dailyBudgetMicros": daily_budget_micros,
+            "maxCpcBidMicros": max_cpc_bid_micros,
+        }.items():
+            if not value.isascii() or not value.isdigit() or int(value) <= 0:
+                raise ValidationError(f"{field} must be a positive integer string")
+        context = await self._customer_context(selected, customer)
+        if context.currency_code is None:
+            raise ValidationError("The customer currency could not be resolved")
+        items = await self._adapter.keyword_forecast(
+            selected,
+            customer,
+            keywords=tuple(normalized_keywords),
+            language_id=language_id,
+            geo_target_ids=geo_ids,
+            date_from=start.isoformat(),
+            date_to=end.isoformat(),
+            daily_budget_micros=int(daily_budget_micros),
+            max_cpc_bid_micros=int(max_cpc_bid_micros),
+            currency_code=context.currency_code,
+        )
+        return await self._envelope(
+            selected,
+            customer,
+            items=list(items),
+            date_from=start.isoformat(),
+            date_to=end.isoformat(),
+            data_through=end.isoformat(),
+            limitations=["Forecasts are estimates and are not guarantees"],
+        )
 
     async def report_run(
         self,

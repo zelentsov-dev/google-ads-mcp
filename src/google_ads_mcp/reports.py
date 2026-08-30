@@ -38,6 +38,7 @@ class ReportDefinition:
     allowed_segments: tuple[str, ...] = ()
     campaign_types: tuple[str, ...] = ()
     modeled_conversions: bool = False
+    filter_campaign_types: bool = True
 
     @property
     def requires_dates(self) -> bool:
@@ -91,7 +92,6 @@ REPORTS: Final[dict[str, ReportDefinition]] = {
                 "segments.date",
                 "segments.device",
                 "segments.ad_network_type",
-                "segments.conversion_action",
             ),
             modeled_conversions=True,
         ),
@@ -132,13 +132,14 @@ REPORTS: Final[dict[str, ReportDefinition]] = {
         ),
         ReportDefinition(
             "criteria_performance",
-            "Campaign criterion serving performance.",
-            "campaign_criterion",
+            "Keyword criterion serving performance.",
+            "keyword_view",
             (
                 "campaign.id",
-                "campaign_criterion.criterion_id",
-                "campaign_criterion.type",
-                "campaign_criterion.negative",
+                "ad_group.id",
+                "ad_group_criterion.criterion_id",
+                "ad_group_criterion.type",
+                "ad_group_criterion.negative",
             ),
             ("metrics.impressions", "metrics.clicks", "metrics.cost_micros", "metrics.conversions"),
             ("segments.date", "segments.device"),
@@ -214,6 +215,7 @@ REPORTS: Final[dict[str, ReportDefinition]] = {
             ("metrics.impressions", "metrics.clicks", "metrics.cost_micros", "metrics.conversions"),
             ("segments.date", "segments.device"),
             ("SHOPPING", "PERFORMANCE_MAX"),
+            filter_campaign_types=False,
         ),
         ReportDefinition(
             "video_performance",
@@ -221,8 +223,8 @@ REPORTS: Final[dict[str, ReportDefinition]] = {
             "campaign",
             ("campaign.id", "campaign.name"),
             (
-                "metrics.video_views",
-                "metrics.video_view_rate",
+                "metrics.impressions",
+                "metrics.clicks",
                 "metrics.cost_micros",
                 "metrics.conversions",
             ),
@@ -233,10 +235,11 @@ REPORTS: Final[dict[str, ReportDefinition]] = {
             "hotel_performance",
             "Hotel campaign performance.",
             "hotel_performance_view",
-            ("campaign.id", "segments.hotel_id", "segments.hotel_country", "segments.hotel_city"),
+            ("campaign.id", "segments.hotel_country", "segments.hotel_city"),
             ("metrics.impressions", "metrics.clicks", "metrics.cost_micros", "metrics.conversions"),
             ("segments.date",),
             ("HOTEL", "TRAVEL"),
+            filter_campaign_types=False,
         ),
         ReportDefinition(
             "local_services_performance",
@@ -329,7 +332,7 @@ def build_report_query(
         if segment not in fields:
             fields.append(segment)
     filters = [f"segments.date BETWEEN '{date_from}' AND '{date_to}'"]
-    if report.campaign_types:
+    if report.campaign_types and report.filter_campaign_types:
         campaign_types = ", ".join(f"'{value}'" for value in report.campaign_types)
         filters.append(f"campaign.advertising_channel_type IN ({campaign_types})")
     ids = _numeric_ids(campaign_ids)

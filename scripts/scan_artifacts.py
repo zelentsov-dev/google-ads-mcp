@@ -28,9 +28,7 @@ DENIED_CONTENT = (
     re.compile(rb"\bAIza[0-9A-Za-z_-]{35}\b"),
     re.compile(rb"(?<![0-9A-Za-z_-])GOCSPX-[0-9A-Za-z_-]{20,}(?![0-9A-Za-z_-])"),
     re.compile(rb"\b1//[0-9A-Za-z._-]{20,}\b"),
-    re.compile(
-        rb"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"
-    ),
+    re.compile(rb"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
 )
 GENERIC_TOKEN = re.compile(rb"(?<![A-Za-z0-9_+/=-])[A-Za-z0-9_+/=-]{40,}(?![A-Za-z0-9_+/=-])")
 INTEGRITY_LABELS = (b"checksum", b"digest", b"hash", b"sha256", b"sha384", b"sha512")
@@ -99,9 +97,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("artifacts", nargs="+", type=Path)
     args = parser.parse_args()
-    for artifact in args.artifacts:
+    artifacts = tuple(
+        candidate
+        for path in args.artifacts
+        for candidate in (
+            tuple(item for item in path.rglob("*") if item.is_file())
+            if path.is_dir()
+            else (path,)
+        )
+    )
+    if not artifacts:
+        raise SystemExit("No artifact files were provided")
+    for artifact in artifacts:
         scan(artifact)
-    print(f"artifact scan valid: {len(args.artifacts)} files")
+    print(f"artifact scan valid: {len(artifacts)} files")
 
 
 if __name__ == "__main__":

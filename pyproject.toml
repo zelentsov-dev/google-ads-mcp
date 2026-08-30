@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "google-ads-operator-mcp"
-version = "0.1.0"
-description = "A local, security-first, read-only MCP server for Google Ads analysis."
+version = "0.2.0"
+description = "A local, security-first MCP server for Google Ads analysis and typed operations."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = { file = "LICENSE" }
@@ -21,7 +21,9 @@ classifiers = [
 ]
 dependencies = [
   "google-ads==31.2.0",
+  "keyring==25.7.0",
   "mcp==1.29.1",
+  "pydantic==2.13.4",
   "typing-extensions==4.16.0",
 ]
 

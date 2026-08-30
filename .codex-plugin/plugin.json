@@ -1,7 +1,7 @@
 {
   "name": "google-ads-mcp",
-  "version": "0.1.0",
-  "description": "Security-first, read-only Google Ads analysis through MCP.",
+  "version": "0.2.0",
+  "description": "Security-first Google Ads analysis and typed safe operations through MCP.",
   "author": {
     "name": "zelentsov-dev",
     "url": "https://github.com/zelentsov-dev"
@@ -9,23 +9,23 @@
   "homepage": "https://github.com/zelentsov-dev/google-ads-mcp",
   "repository": "https://github.com/zelentsov-dev/google-ads-mcp",
   "license": "Apache-2.0",
-  "keywords": ["google-ads", "mcp", "analytics", "read-only"],
+  "keywords": ["google-ads", "mcp", "analytics", "safe-operator"],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Google Ads MCP",
-    "shortDescription": "Safe read-only Google Ads analysis.",
-    "longDescription": "Inspect Google Ads accounts, campaigns, reports, metadata and change history through bounded read-only tools.",
+    "shortDescription": "Safe Google Ads analysis and typed operations.",
+    "longDescription": "Inspect Google Ads evidence and use policy-gated, receipt-bound typed operation previews with durable verification.",
     "developerName": "zelentsov-dev",
     "category": "Business",
-    "capabilities": ["Read"],
+    "capabilities": ["Read", "Write"],
     "websiteURL": "https://github.com/zelentsov-dev/google-ads-mcp",
     "privacyPolicyURL": "https://github.com/zelentsov-dev/google-ads-mcp/blob/main/PRIVACY.md",
     "termsOfServiceURL": "https://github.com/zelentsov-dev/google-ads-mcp/blob/main/README.md",
     "defaultPrompt": [
       "Check my Google Ads account health.",
       "Compare campaign performance safely.",
-      "Explain recent Google Ads changes."
+      "Preview a policy-gated paused campaign."
     ]
   }
 }

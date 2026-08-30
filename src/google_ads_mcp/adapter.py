@@ -10,6 +10,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
+import yaml
+
 from google_ads_mcp.config import ADCAuth, Profile
 from google_ads_mcp.constants import (
     API_VERSION,
@@ -18,7 +20,9 @@ from google_ads_mcp.constants import (
     REQUEST_DEADLINE_SECONDS,
 )
 from google_ads_mcp.errors import AdapterError, SecurityError
+from google_ads_mcp.models import ForecastKeyword
 from google_ads_mcp.normalization import normalize_row
+from google_ads_mcp.secrets import SecretStore, SystemSecretStore
 from google_ads_mcp.security import read_owner_only_text
 
 _REQUEST_ID = re.compile(r"^[A-Za-z0-9_./=-]{1,128}$")
@@ -79,6 +83,32 @@ class ReadAdapter(Protocol):
 
     async def validate_query(self, profile: Profile, customer_id: str, query: str) -> None: ...
 
+    async def keyword_ideas(
+        self,
+        profile: Profile,
+        customer_id: str,
+        *,
+        keywords: tuple[str, ...],
+        page_url: str | None,
+        language_id: str,
+        geo_target_ids: tuple[str, ...],
+    ) -> AdapterSearchResult: ...
+
+    async def keyword_forecast(
+        self,
+        profile: Profile,
+        customer_id: str,
+        *,
+        keywords: tuple[ForecastKeyword, ...],
+        language_id: str,
+        geo_target_ids: tuple[str, ...],
+        date_from: str,
+        date_to: str,
+        daily_budget_micros: int,
+        max_cpc_bid_micros: int,
+        currency_code: str,
+    ) -> tuple[dict[str, Any], ...]: ...
+
 
 class GoogleAdsReadAdapter:
     """The only production boundary allowed to construct Google Ads service clients."""
@@ -89,23 +119,40 @@ class GoogleAdsReadAdapter:
         client_factory: Callable[[Profile], Any] | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        secret_store: SecretStore | None = None,
     ) -> None:
-        self._client_factory = client_factory or self._build_client
         self._clock = clock
         self._sleeper = sleeper
+        self._secret_store = secret_store or SystemSecretStore()
+        self._client_factory = client_factory or self._build_client_from_store
         self._clients: dict[str, Any] = {}
+
+    def _build_client_from_store(self, profile: Profile) -> Any:
+        return self._build_client_with_store(profile, self._secret_store)
 
     @staticmethod
     def _build_client(profile: Profile) -> Any:
+        return GoogleAdsReadAdapter._build_client_with_store(profile, SystemSecretStore())
+
+    @staticmethod
+    def _build_client_with_store(profile: Profile, secret_store: SecretStore) -> Any:
         from google.ads.googleads.client import GoogleAdsClient
 
         _silence_google_diagnostics()
         if isinstance(profile.auth, ADCAuth):
-            developer_token = os.environ.get(profile.auth.developer_token_env)
+            if profile.auth.developer_token_keyring:
+                developer_token = secret_store.get_developer_token(profile.name)
+            else:
+                env_name = profile.auth.developer_token_env
+                developer_token = os.environ.get(env_name) if env_name is not None else None
             if not developer_token:
+                source = (
+                    "system secure storage"
+                    if profile.auth.developer_token_keyring
+                    else f"environment variable {profile.auth.developer_token_env}"
+                )
                 raise SecurityError(
-                    "Developer token environment variable is not set: "
-                    f"{profile.auth.developer_token_env}",
+                    f"Developer token source is unavailable: {source}",
                     code="developer_token_missing",
                 )
             config: dict[str, Any] = {
@@ -118,7 +165,27 @@ class GoogleAdsReadAdapter:
             client = GoogleAdsClient.load_from_dict(config, version=API_VERSION)
         else:
             yaml_text, _ = read_owner_only_text(profile.auth.path, label="Google Ads YAML")
-            client = GoogleAdsClient.load_from_string(yaml_text, version=API_VERSION)
+            try:
+                parsed = yaml.safe_load(yaml_text)
+            except yaml.YAMLError as exc:
+                raise SecurityError(
+                    "The Google Ads YAML is invalid", code="invalid_google_ads_yaml"
+                ) from exc
+            if not isinstance(parsed, dict):
+                raise SecurityError(
+                    "The Google Ads YAML root must be an object",
+                    code="invalid_google_ads_yaml",
+                )
+            config = cast(dict[str, Any], parsed)
+            if profile.auth.developer_token_keyring:
+                developer_token = secret_store.get_developer_token(profile.name)
+                if not developer_token:
+                    raise SecurityError(
+                        "The configured developer token reference is unavailable",
+                        code="developer_token_missing",
+                    )
+                config["developer_token"] = developer_token
+            client = GoogleAdsClient.load_from_dict(config, version=API_VERSION)
             if profile.login_customer_id is not None:
                 client.login_customer_id = profile.login_customer_id
         _silence_google_diagnostics()
@@ -130,6 +197,21 @@ class GoogleAdsReadAdapter:
             client = self._client_factory(profile)
             self._clients[profile.name] = client
         return client
+
+    def client_for_write_adapter(self, profile: Profile) -> Any:
+        return self._client(profile)
+
+    @classmethod
+    def sanitize_google_exception(cls, exc: BaseException) -> AdapterError:
+        return cls._sanitize_exception(exc)
+
+    @staticmethod
+    def google_request_id(exc: BaseException) -> str | None:
+        return GoogleAdsReadAdapter._request_id(exc)
+
+    @staticmethod
+    def grpc_status_name(exc: BaseException) -> str | None:
+        return GoogleAdsReadAdapter._grpc_status_name(exc)
 
     @staticmethod
     def _request_id(exc: BaseException) -> str | None:
@@ -259,9 +341,7 @@ class GoogleAdsReadAdapter:
             ) from None
         raise AssertionError("unreachable")
 
-    async def search(
-        self, profile: Profile, customer_id: str, query: str
-    ) -> AdapterSearchResult:
+    async def search(self, profile: Profile, customer_id: str, query: str) -> AdapterSearchResult:
         requested_fields = self._requested_fields(query)
 
         async def operation(remaining_seconds: float) -> AdapterSearchResult:
@@ -355,3 +435,106 @@ class GoogleAdsReadAdapter:
                 await self._close_service(service)
 
         await self._read(operation)
+
+    async def keyword_ideas(
+        self,
+        profile: Profile,
+        customer_id: str,
+        *,
+        keywords: tuple[str, ...],
+        page_url: str | None,
+        language_id: str,
+        geo_target_ids: tuple[str, ...],
+    ) -> AdapterSearchResult:
+        async def operation(remaining_seconds: float) -> AdapterSearchResult:
+            client = self._client(profile)
+            service = client.get_service(
+                "KeywordPlanIdeaService", version=API_VERSION, is_async=True
+            )
+            try:
+                request = client.get_type("GenerateKeywordIdeasRequest", version=API_VERSION)
+                request.customer_id = customer_id
+                request.language = f"languageConstants/{language_id}"
+                request.geo_target_constants.extend(
+                    f"geoTargetConstants/{target_id}" for target_id in geo_target_ids
+                )
+                request.include_adult_keywords = False
+                request.page_size = 200
+                request.keyword_plan_network = (
+                    client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH_AND_PARTNERS
+                )
+                if page_url is not None and keywords:
+                    request.keyword_and_url_seed.url = page_url
+                    request.keyword_and_url_seed.keywords.extend(keywords)
+                elif page_url is not None:
+                    request.url_seed.url = page_url
+                else:
+                    request.keyword_seed.keywords.extend(keywords)
+                pager = await service.generate_keyword_ideas(
+                    request=request,
+                    retry=None,
+                    timeout=remaining_seconds,
+                )
+                result: list[dict[str, Any]] = []
+                truncated = False
+                async for item in pager:
+                    if len(result) >= 200:
+                        truncated = True
+                        break
+                    result.append(normalize_row(item))
+                return AdapterSearchResult(tuple(result), None, truncated)
+            finally:
+                await self._close_service(service)
+
+        return cast(AdapterSearchResult, await self._read(operation))
+
+    async def keyword_forecast(
+        self,
+        profile: Profile,
+        customer_id: str,
+        *,
+        keywords: tuple[ForecastKeyword, ...],
+        language_id: str,
+        geo_target_ids: tuple[str, ...],
+        date_from: str,
+        date_to: str,
+        daily_budget_micros: int,
+        max_cpc_bid_micros: int,
+        currency_code: str,
+    ) -> tuple[dict[str, Any], ...]:
+        async def operation(remaining_seconds: float) -> tuple[dict[str, Any], ...]:
+            client = self._client(profile)
+            service = client.get_service(
+                "KeywordPlanIdeaService", version=API_VERSION, is_async=True
+            )
+            try:
+                request = client.get_type(
+                    "GenerateKeywordForecastMetricsRequest", version=API_VERSION
+                )
+                request.customer_id = customer_id
+                request.currency_code = currency_code
+                request.forecast_period.start_date = date_from
+                request.forecast_period.end_date = date_to
+                request.campaign.language_constants.append(f"languageConstants/{language_id}")
+                request.campaign.geo_target_constants.extend(
+                    f"geoTargetConstants/{target_id}" for target_id in geo_target_ids
+                )
+                strategy = request.campaign.bidding_strategy.manual_cpc_bidding_strategy
+                strategy.daily_budget_micros = daily_budget_micros
+                strategy.max_cpc_bid_micros = max_cpc_bid_micros
+                ad_group = client.get_type("ForecastAdGroup", version=API_VERSION)
+                for keyword in keywords:
+                    ad_group.keywords.append(
+                        {"text": keyword["text"], "match_type": keyword["matchType"]}
+                    )
+                request.campaign.ad_groups.append(ad_group)
+                response = await service.generate_keyword_forecast_metrics(
+                    request=request,
+                    retry=None,
+                    timeout=remaining_seconds,
+                )
+                return (normalize_row(response.campaign_forecast_metrics),)
+            finally:
+                await self._close_service(service)
+
+        return cast(tuple[dict[str, Any], ...], await self._read(operation))

@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: Version
-      placeholder: "0.1.0"
+      placeholder: "0.2.0"
     validations:
       required: true
   - type: dropdown
@@ -22,6 +22,8 @@ body:
         - Synthetic fixture
         - Test account (sanitized)
         - Production read-only account (sanitized)
+        - Paused production canary (sanitized)
+        - Local operation journal (sanitized)
         - Plugin installation
     validations:
       required: true

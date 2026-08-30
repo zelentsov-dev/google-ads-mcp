@@ -4,11 +4,37 @@ on:
   push:
     tags: ["v*"]
 
+concurrency:
+  group: google-ads-mcp-release
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:
+  preflight:
+    if: github.repository == 'zelentsov-dev/google-ads-mcp'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: |
+          git fetch origin main
+          release_sha=$(git rev-parse 'HEAD^{commit}')
+          main_sha=$(git rev-parse 'origin/main^{commit}')
+          test "$release_sha" = "$main_sha"
+          echo "RELEASE_SHA=$release_sha" >> "$GITHUB_ENV"
+      - run: python scripts/verify_release_source.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
   build:
     if: github.repository == 'zelentsov-dev/google-ads-mcp'
+    needs: preflight
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,12 +67,12 @@ jobs:
       - run: uv run --frozen python scripts/scan_artifacts.py dist/*
       - run: uv run --frozen python scripts/generate_checksums.py dist
       - run: python -m venv /tmp/google-ads-mcp-wheel-smoke
-      - run: /tmp/google-ads-mcp-wheel-smoke/bin/pip install dist/google_ads_operator_mcp-0.1.0-py3-none-any.whl
+      - run: /tmp/google-ads-mcp-wheel-smoke/bin/pip install dist/google_ads_operator_mcp-0.2.0-py3-none-any.whl
       - run: /tmp/google-ads-mcp-wheel-smoke/bin/google-ads-mcp version
       - run: python -m venv /tmp/google-ads-mcp-sdist-smoke
-      - run: /tmp/google-ads-mcp-sdist-smoke/bin/pip install dist/google_ads_operator_mcp-0.1.0.tar.gz
+      - run: /tmp/google-ads-mcp-sdist-smoke/bin/pip install dist/google_ads_operator_mcp-0.2.0.tar.gz
       - run: /tmp/google-ads-mcp-sdist-smoke/bin/google-ads-mcp version
-      - run: uv run --frozen python scripts/smoke_plugin_archive.py dist/google-ads-mcp-plugin-0.1.0.zip
+      - run: uv run --frozen python scripts/smoke_plugin_archive.py dist/google-ads-mcp-plugin-0.2.0.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-dist
@@ -82,12 +108,12 @@ jobs:
         with:
           name: release-dist
           path: dist
-      - run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file docs/release-notes-v0.1.0.md
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file docs/release-notes-v0.2.0.md
         env:
           GH_TOKEN: ${{ github.token }}
 
   pypi-publish:
-    needs: [build, attest]
+    needs: [github-release]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

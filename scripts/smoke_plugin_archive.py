@@ -88,7 +88,7 @@ def smoke(archive_path: Path) -> None:
         )
         tools = cast(list[dict[str, Any]], result["tools"])
         expected = json.loads(
-            (plugin_root / "api-contract" / "tools-v0.1.json").read_text(encoding="utf-8")
+            (plugin_root / "api-contract" / "tools-v0.2.json").read_text(encoding="utf-8")
         )["tools"]
         actual = sorted(str(tool["name"]) for tool in tools)
         if actual != expected:

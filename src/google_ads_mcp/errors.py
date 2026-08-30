@@ -38,6 +38,16 @@ class ValidationError(PublicError):
         super().__init__(code=code, message=message)
 
 
+class BlockedError(PublicError):
+    def __init__(self, message: str, code: str = "write_blocked") -> None:
+        super().__init__(code=code, message=message, status="blocked")
+
+
+class NotSupportedError(PublicError):
+    def __init__(self, message: str, code: str = "not_supported") -> None:
+        super().__init__(code=code, message=message, status="not_supported")
+
+
 class CursorError(PublicError):
     def __init__(self, message: str, code: str = "invalid_cursor") -> None:
         super().__init__(code=code, message=message)

@@ -35,6 +35,7 @@ _BOUNDED_DURING_RANGES = frozenset(
 DENIED_RESOURCES = frozenset(
     {
         "account_budget",
+        "account_budget_proposal",
         "billing_setup",
         "customer_client_link",
         "customer_manager_link",
@@ -119,9 +120,7 @@ def _tokenize(query: str) -> tuple[_Token, ...]:
         if character.isalpha() or character == "_":
             start = index
             index += 1
-            while index < len(query) and (
-                query[index].isalnum() or query[index] in {"_", "."}
-            ):
+            while index < len(query) and (query[index].isalnum() or query[index] in {"_", "."}):
                 index += 1
             tokens.append(_Token(query[start:index], "word", start, index))
             continue
@@ -303,16 +302,11 @@ def validate_gaql(query: str) -> ValidatedGaql:
             len(tokens),
         )
         where_tokens = tokens[where_index + 1 : boundary]
-        if any(
-            token.kind == "word" and token.upper in {"NOT", "OR"}
-            for token in where_tokens
-        ):
+        if any(token.kind == "word" and token.upper in {"NOT", "OR"} for token in where_tokens):
             raise ValidationError(
                 "Serving-metric GAQL requires an AND-only positive date predicate"
             )
-        date_from, date_to, predefined_date_range = _bounded_date_filter(
-            where_tokens
-        )
+        date_from, date_to, predefined_date_range = _bounded_date_filter(where_tokens)
     return ValidatedGaql(
         query=stripped,
         resource=resource,

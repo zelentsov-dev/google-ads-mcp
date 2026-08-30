@@ -11,9 +11,7 @@ from google_ads_mcp.server import create_mcp
 
 
 class SlowAdapter:
-    async def search(
-        self, profile: Any, customer_id: str, query: str
-    ) -> AdapterSearchResult:
+    async def search(self, profile: Any, customer_id: str, query: str) -> AdapterSearchResult:
         return AdapterSearchResult((), 0, False)
 
     async def accessible_customers(self, profile: Any) -> tuple[str, ...]:

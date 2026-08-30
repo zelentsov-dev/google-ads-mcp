@@ -28,13 +28,15 @@ def _is_windows() -> bool:
 @dataclass(frozen=True, slots=True)
 class ADCAuth:
     type: Literal["adc"]
-    developer_token_env: str
+    developer_token_env: str | None
+    developer_token_keyring: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class GoogleAdsYamlAuth:
     type: Literal["googleAdsYaml"]
     path: Path
+    developer_token_keyring: bool = False
 
 
 Auth = ADCAuth | GoogleAdsYamlAuth
@@ -46,7 +48,7 @@ class Profile:
     login_customer_id: str | None
     default_customer_id: str | None
     auth: Auth
-    allow_writes: Literal[False]
+    allow_writes: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,13 +93,32 @@ def _parse_auth(raw: object, profile_name: str) -> tuple[Auth, list[str]]:
     auth = cast(dict[str, Any], raw)
     auth_type = auth.get("type")
     if auth_type == "adc":
-        _strict_keys(auth, {"type", "developerTokenEnv"}, f"profiles.{profile_name}.auth")
+        _strict_keys(
+            auth,
+            {"type", "developerTokenEnv", "developerTokenKeyring"},
+            f"profiles.{profile_name}.auth",
+        )
         env_name = auth.get("developerTokenEnv")
-        if not isinstance(env_name, str) or not _ENV_NAME.fullmatch(env_name):
+        keyring = auth.get("developerTokenKeyring") is True
+        if env_name is not None and (
+            not isinstance(env_name, str) or not _ENV_NAME.fullmatch(env_name)
+        ):
             raise ConfigError(f"Profile {profile_name} developerTokenEnv is invalid")
-        return ADCAuth(type="adc", developer_token_env=env_name), []
+        if keyring == (env_name is not None):
+            raise ConfigError(
+                f"Profile {profile_name} must configure exactly one developer token source"
+            )
+        return ADCAuth(
+            type="adc",
+            developer_token_env=env_name,
+            developer_token_keyring=keyring,
+        ), []
     if auth_type == "googleAdsYaml":
-        _strict_keys(auth, {"type", "path"}, f"profiles.{profile_name}.auth")
+        _strict_keys(
+            auth,
+            {"type", "path", "developerTokenKeyring"},
+            f"profiles.{profile_name}.auth",
+        )
         raw_path = auth.get("path")
         if not isinstance(raw_path, str) or not raw_path:
             raise ConfigError(f"Profile {profile_name} YAML path is required")
@@ -105,7 +126,11 @@ def _parse_auth(raw: object, profile_name: str) -> tuple[Auth, list[str]]:
         if not path.is_absolute():
             raise SecurityError(f"Profile {profile_name} YAML path must be absolute")
         warnings = check_owner_only_file(path, label=f"Profile {profile_name} Google Ads YAML")
-        return GoogleAdsYamlAuth(type="googleAdsYaml", path=path), warnings
+        return GoogleAdsYamlAuth(
+            type="googleAdsYaml",
+            path=path,
+            developer_token_keyring=auth.get("developerTokenKeyring") is True,
+        ), warnings
     raise ConfigError(f"Profile {profile_name} auth.type must be adc or googleAdsYaml")
 
 
@@ -138,8 +163,8 @@ def parse_config(
         if name in seen:
             raise ConfigError(f"Duplicate profile name: {name}")
         seen.add(name)
-        if item.get("allowWrites") is not False:
-            raise SecurityError(f"Profile {name} must set allowWrites to false")
+        if not isinstance(item.get("allowWrites"), bool):
+            raise ConfigError(f"Profile {name} allowWrites must be a boolean")
         auth, auth_warnings = _parse_auth(item.get("auth"), name)
         warnings.extend(auth_warnings)
         profiles.append(
@@ -152,7 +177,7 @@ def parse_config(
                     item.get("defaultCustomerId"), field=f"Profile {name} defaultCustomerId"
                 ),
                 auth=auth,
-                allow_writes=False,
+                allow_writes=bool(item["allowWrites"]),
             )
         )
     return AccountsConfig(path=path, profiles=tuple(profiles), warnings=tuple(warnings))
@@ -181,7 +206,7 @@ def initialize_config(cli_path: str | None = None) -> Path:
                 "defaultCustomerId": "0987654321",
                 "auth": {
                     "type": "adc",
-                    "developerTokenEnv": "GOOGLE_ADS_DEVELOPER_TOKEN",
+                    "developerTokenKeyring": True,
                 },
                 "allowWrites": False,
             }

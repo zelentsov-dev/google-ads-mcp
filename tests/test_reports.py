@@ -50,6 +50,29 @@ def test_build_report_query_is_bounded_and_numeric() -> None:
     assert "segments.device" in query
 
 
+def test_live_compatible_v25_report_shapes() -> None:
+    _, criteria = build_report_query(
+        "criteria_performance", date_from="2026-01-01", date_to="2026-01-02"
+    )
+    _, shopping = build_report_query(
+        "shopping_products", date_from="2026-01-01", date_to="2026-01-02"
+    )
+    _, video = build_report_query(
+        "video_performance", date_from="2026-01-01", date_to="2026-01-02"
+    )
+    _, hotel = build_report_query(
+        "hotel_performance", date_from="2026-01-01", date_to="2026-01-02"
+    )
+
+    assert "FROM keyword_view" in criteria
+    assert "campaign_criterion" not in criteria
+    assert "campaign.advertising_channel_type" not in shopping
+    assert "metrics.video_views" not in video
+    assert "metrics.video_view_rate" not in video
+    assert "segments.hotel_id" not in hotel
+    assert "campaign.advertising_channel_type" not in hotel
+
+
 def test_specialized_report_filters_campaign_type() -> None:
     _, query = build_report_query(
         "app_campaign_performance",
@@ -74,7 +97,7 @@ def test_live_validation_covers_every_allowed_segment_subset() -> None:
         for report in REPORTS.values()
         for segments in segment_subsets(report.allowed_segments)
     }
-    assert expected_query_count == 84
+    assert expected_query_count == 76
     assert actual_query_count == expected_query_count
     assert len(queries) == expected_query_count
     for report in REPORTS.values():

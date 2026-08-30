@@ -66,6 +66,18 @@ def test_selected_null_protobuf_metrics_remain_explicit_null() -> None:
     }
 
 
+def test_selected_false_enhanced_cpc_remains_authoritative_false() -> None:
+    row = GoogleAdsRow()
+    row.campaign.manual_cpc.enhanced_cpc_enabled = False
+
+    normalized = normalize_row(
+        row,
+        requested_fields=("campaign.manual_cpc.enhanced_cpc_enabled",),
+    )
+
+    assert normalized == {"campaign": {"manual_cpc": {"enhanced_cpc_enabled": False}}}
+
+
 def test_iso_dates_and_ranges() -> None:
     assert parse_iso_date("2026-08-27", field="date") == date(2026, 8, 27)
     assert validate_date_range("2024-01-01", "2024-12-31", max_days=366)
