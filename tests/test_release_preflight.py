@@ -95,6 +95,7 @@ def test_ci_uses_cross_platform_preflight_before_compatibility_runners() -> None
     assert "needs: preflight" in ci
     assert "fail-fast: true" in ci
     assert "needs: [preflight, compatibility]" in ci
+    assert "uv run --frozen pytest --no-cov" in ci
     assert ci.count("enable-cache: true") == 3
 
 

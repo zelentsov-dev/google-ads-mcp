@@ -70,7 +70,7 @@ jobs:
           version: "0.11.13"
           enable-cache: true
       - run: uv sync --frozen --all-groups
-      - run: uv run --frozen pytest
+      - run: uv run --frozen pytest --no-cov
 
   build:
     runs-on: ubuntu-latest

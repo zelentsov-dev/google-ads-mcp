@@ -491,6 +491,7 @@ def test_serve_stdio_delegates_to_stdio(monkeypatch: Any) -> None:
     calls: list[str] = []
     arguments: list[dict[str, Any]] = []
     policy_paths: list[str | None] = []
+    state_dir = Path.cwd() / "synthetic-state"
 
     class Server:
         def run(self, transport: str) -> None:
@@ -510,11 +511,11 @@ def test_serve_stdio_delegates_to_stdio(monkeypatch: Any) -> None:
         "/synthetic/config.json",
         allow_writes=True,
         policy_path="/synthetic/policies.json",
-        state_dir_path="/synthetic/state",
+        state_dir_path=str(state_dir),
     )
     assert calls == ["stdio"]
     assert arguments[0]["allow_writes"] is True
-    assert arguments[0]["state_dir"] == Path("/synthetic/state")
+    assert arguments[0]["state_dir"] == state_dir
     arguments[0]["policy_loader"]()
     assert policy_paths == ["/synthetic/policies.json"]
 
