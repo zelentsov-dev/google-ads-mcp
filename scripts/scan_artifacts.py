@@ -101,9 +101,7 @@ def main() -> None:
         candidate
         for path in args.artifacts
         for candidate in (
-            tuple(item for item in path.rglob("*") if item.is_file())
-            if path.is_dir()
-            else (path,)
+            tuple(item for item in path.rglob("*") if item.is_file()) if path.is_dir() else (path,)
         )
     )
     if not artifacts:

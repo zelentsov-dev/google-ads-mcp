@@ -57,12 +57,8 @@ def test_live_compatible_v25_report_shapes() -> None:
     _, shopping = build_report_query(
         "shopping_products", date_from="2026-01-01", date_to="2026-01-02"
     )
-    _, video = build_report_query(
-        "video_performance", date_from="2026-01-01", date_to="2026-01-02"
-    )
-    _, hotel = build_report_query(
-        "hotel_performance", date_from="2026-01-01", date_to="2026-01-02"
-    )
+    _, video = build_report_query("video_performance", date_from="2026-01-01", date_to="2026-01-02")
+    _, hotel = build_report_query("hotel_performance", date_from="2026-01-01", date_to="2026-01-02")
 
     assert "FROM keyword_view" in criteria
     assert "campaign_criterion" not in criteria
@@ -97,7 +93,7 @@ def test_live_validation_covers_every_allowed_segment_subset() -> None:
         for report in REPORTS.values()
         for segments in segment_subsets(report.allowed_segments)
     }
-    assert expected_query_count == 76
+    assert expected_query_count == 84
     assert actual_query_count == expected_query_count
     assert len(queries) == expected_query_count
     for report in REPORTS.values():

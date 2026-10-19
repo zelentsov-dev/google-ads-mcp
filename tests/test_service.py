@@ -151,7 +151,19 @@ def test_campaign_query_validation(accounts_config: Any, fake_adapter: Any) -> N
 
 @pytest.mark.parametrize(
     "resource_type",
-    ["status", "budget", "bidding", "ad_groups", "ads", "assets", "criteria", "conversions"],
+    [
+        "status",
+        "budget",
+        "bidding",
+        "ad_groups",
+        "ads",
+        "assets",
+        "app_assets",
+        "asset_group_assets",
+        "criteria",
+        "keywords",
+        "conversions",
+    ],
 )
 def test_campaign_inventory_matrix(
     accounts_config: Any, fake_adapter: Any, resource_type: str
@@ -163,6 +175,47 @@ def test_campaign_inventory_matrix(
     )
     assert response["status"] == "ok"
     assert "campaign.id = 123" in fake_adapter.queries[0]
+
+
+def test_campaign_inventory_and_asset_performance_fallbacks(
+    accounts_config: Any, fake_adapter: Any
+) -> None:
+    class FallbackAdapter(type(fake_adapter)):
+        def __init__(self, target_table: str) -> None:
+            super().__init__()
+            self.target_table = target_table
+
+        async def search(self, profile: Any, customer_id: str, query: str) -> AdapterSearchResult:
+            self.queries.append(query)
+            if "customer.currency_code" in query:
+                return await super().search(profile, customer_id, query)
+            if f"FROM {self.target_table}" in query:
+                return AdapterSearchResult(({"asset": {"id": "1"}},), 1, False)
+            return AdapterSearchResult((), 0, False)
+
+    app_adapter = FallbackAdapter("ad_group_ad_asset_view")
+    app_service = GoogleAdsService(accounts_config, app_adapter)
+    inv_app = _run(app_service.campaign_inventory("test-read-only", "2222222222", "123", "assets"))
+    assert inv_app["items"] == [{"asset": {"id": "1"}}]
+    rep_app = _run(
+        app_service.asset_performance_report(
+            "test-read-only", "2222222222", "2026-01-01", "2026-01-02"
+        )
+    )
+    assert rep_app["items"] == [{"asset": {"id": "1"}}]
+
+    pmax_adapter = FallbackAdapter("asset_group_asset")
+    pmax_service = GoogleAdsService(accounts_config, pmax_adapter)
+    inv_pmax = _run(
+        pmax_service.campaign_inventory("test-read-only", "2222222222", "123", "assets")
+    )
+    assert inv_pmax["items"] == [{"asset": {"id": "1"}}]
+    rep_pmax = _run(
+        pmax_service.asset_performance_report(
+            "test-read-only", "2222222222", "2026-01-01", "2026-01-02"
+        )
+    )
+    assert rep_pmax["items"] == [{"asset": {"id": "1"}}]
 
 
 def test_campaign_inventory_rejects_unsafe_inputs(accounts_config: Any, fake_adapter: Any) -> None:
@@ -194,23 +247,17 @@ def test_v020_info_profiles_and_analytics(accounts_config: Any, fake_adapter: An
     diagnostics = _run(service.campaign_diagnostics("test-read-only", "2222222222", "1"))
     assert diagnostics["status"] == "ok"
     search_terms = _run(
-        service.search_terms_report(
-            "test-read-only", "2222222222", "2026-01-01", "2026-01-02"
-        )
+        service.search_terms_report("test-read-only", "2222222222", "2026-01-01", "2026-01-02")
     )
     assert search_terms["status"] == "ok"
     assets = _run(
-        service.asset_performance_report(
-            "test-read-only", "2222222222", "2026-01-01", "2026-01-02"
-        )
+        service.asset_performance_report("test-read-only", "2222222222", "2026-01-01", "2026-01-02")
     )
     assert assets["status"] == "ok"
 
     goals = _run(service.conversion_goals_list("test-read-only", "2222222222"))
     assert "attribution truth" in goals["evidence"]["limitations"][0]
-    recommendations = _run(
-        service.recommendations_list("test-read-only", "2222222222", ["1", "2"])
-    )
+    recommendations = _run(service.recommendations_list("test-read-only", "2222222222", ["1", "2"]))
     assert "campaign.id IN (1, 2)" in fake_adapter.queries[-1]
     assert "recommendation.impact" not in fake_adapter.queries[-1]
     assert "proposals" in recommendations["evidence"]["limitations"][0]
@@ -278,9 +325,7 @@ def test_keyword_ideas_and_forecast(accounts_config: Any, fake_adapter: Any) -> 
     )
     assert forecast["items"] == [{"clicks": 10.0}]
     assert fake_adapter.forecast_calls[0]["currency_code"] == "USD"
-    assert fake_adapter.forecast_calls[0]["keywords"] == (
-        {"text": "shoes", "matchType": "EXACT"},
-    )
+    assert fake_adapter.forecast_calls[0]["keywords"] == ({"text": "shoes", "matchType": "EXACT"},)
 
 
 @pytest.mark.parametrize(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from collections.abc import Iterable
 from datetime import datetime
@@ -8,9 +9,7 @@ from typing import Any
 from google_ads_mcp.errors import NotSupportedError, ValidationError
 from google_ads_mcp.write_models import MutationItem, WriteKind, WritePlan
 
-_RESOURCE_NAME = re.compile(
-    r"^customers/([0-9]{10})/([A-Za-z]+)/(-?[A-Za-z0-9_.~]+)$"
-)
+_RESOURCE_NAME = re.compile(r"^customers/([0-9]{10})/([A-Za-z]+)/(-?[A-Za-z0-9_.~]+)$")
 _MATCH_TYPES = frozenset({"BROAD", "PHRASE", "EXACT"})
 _STATUSES = frozenset({"ENABLED", "PAUSED"})
 _AGGREGATE_BUDGET_QUERY = (
@@ -34,6 +33,20 @@ def _micros(value: object, *, field: str, optional: bool = False) -> int | None:
     if not rendered.isascii() or not rendered.isdigit() or int(rendered) <= 0:
         raise ValidationError(f"{field} must be a positive integer string")
     return int(rendered)
+
+
+def _roas(value: object, *, field: str, optional: bool = False) -> float | None:
+    if value is None and optional:
+        return None
+    if isinstance(value, bool):
+        raise ValidationError(f"{field} must be a positive number")
+    try:
+        rendered = float(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(f"{field} must be a positive number") from exc
+    if not math.isfinite(rendered) or rendered <= 0 or rendered > 1000.0:
+        raise ValidationError(f"{field} must be a positive number")
+    return rendered
 
 
 def _name(value: object, *, field: str = "name", maximum: int = 128) -> str:
@@ -82,9 +95,7 @@ def _texts(
     return result
 
 
-def _ids(
-    values: object, *, field: str, minimum: int, maximum: int
-) -> tuple[str, ...]:
+def _ids(values: object, *, field: str, minimum: int, maximum: int) -> tuple[str, ...]:
     if not isinstance(values, (list, tuple)):
         raise ValidationError(f"{field} must be an array")
     result = tuple(_id(value, field=field) for value in values)
@@ -187,10 +198,18 @@ def state_queries(
             (
                 "campaign_enable_parent",
                 "SELECT campaign.id, campaign.status, campaign.advertising_channel_type, "
+                "campaign.advertising_channel_sub_type, "
+                "campaign.app_campaign_setting.app_id, "
+                "campaign.app_campaign_setting.app_store, "
+                "campaign.app_campaign_setting.bidding_strategy_goal_type, "
                 "campaign.campaign_budget, campaign_budget.resource_name, "
                 "campaign_budget.amount_micros, "
                 "campaign.bidding_strategy_type, "
                 "campaign.manual_cpc.enhanced_cpc_enabled, "
+                "campaign.target_cpa.target_cpa_micros, "
+                "campaign.target_roas.target_roas, "
+                "campaign.maximize_conversions.target_cpa_micros, "
+                "campaign.maximize_conversion_value.target_roas, "
                 "campaign.geo_target_type_setting.positive_geo_target_type, "
                 "campaign.geo_target_type_setting.negative_geo_target_type FROM campaign "
                 f"WHERE campaign.id = {campaign_id} LIMIT 1",
@@ -235,6 +254,13 @@ def state_queries(
                 f"WHERE campaign.id = {campaign_id} "
                 "AND ad_group_ad.status != 'REMOVED' LIMIT 1000",
             ),
+            (
+                "campaign_enable_asset_groups",
+                "SELECT campaign.id, asset_group.id, asset_group.status, "
+                "asset_group.final_urls FROM asset_group "
+                f"WHERE campaign.id = {campaign_id} "
+                "AND asset_group.status != 'REMOVED' LIMIT 1000",
+            ),
         )
     if kind in {"campaign_update", "campaign_status", "campaign_bidding"}:
         campaign_id = _id(payload.get("campaignId"), field="campaignId")
@@ -245,7 +271,9 @@ def state_queries(
                 "campaign.end_date_time, campaign.final_url_suffix, campaign.campaign_budget, "
                 "campaign_budget.resource_name, campaign_budget.amount_micros, "
                 "campaign.bidding_strategy_type, campaign.manual_cpc.enhanced_cpc_enabled, "
-                "campaign.target_cpa.target_cpa_micros, campaign.target_roas.target_roas "
+                "campaign.target_cpa.target_cpa_micros, campaign.target_roas.target_roas, "
+                "campaign.maximize_conversions.target_cpa_micros, "
+                "campaign.maximize_conversion_value.target_roas "
                 f"FROM campaign WHERE campaign.id = {campaign_id} LIMIT 1",
             ),
         )
@@ -379,6 +407,28 @@ def state_queries(
                 f"AND ad_group_ad.ad.name = '{name}' "
                 "AND ad_group_ad.status != 'REMOVED' LIMIT 2",
             ),
+            _parent_campaign_budget_query("ad_group", ad_group_id),
+        )
+    if kind == "ad_update":
+        ad_group_id = _id(payload.get("adGroupId"), field="adGroupId")
+        ad_id = _id(payload.get("adId"), field="adId")
+        return (
+            (
+                "ad",
+                "SELECT ad_group.id, ad_group_ad.resource_name, ad_group_ad.status, "
+                "ad_group_ad.ad.resource_name, ad_group_ad.ad.id, ad_group_ad.ad.name, "
+                "ad_group_ad.ad.type, ad_group_ad.ad.final_urls, "
+                "ad_group_ad.ad.responsive_search_ad.headlines, "
+                "ad_group_ad.ad.responsive_search_ad.descriptions, "
+                "ad_group_ad.ad.app_ad.headlines, "
+                "ad_group_ad.ad.app_ad.descriptions, "
+                "ad_group_ad.ad.app_ad.images, "
+                "ad_group_ad.ad.app_ad.youtube_videos FROM ad_group_ad "
+                f"WHERE ad_group.id = {ad_group_id} "
+                f"AND ad_group_ad.ad.id = {ad_id} "
+                "AND ad_group_ad.status != 'REMOVED' LIMIT 1",
+            ),
+            _parent_campaign_budget_query("ad_group", ad_group_id),
         )
     recommendation = _resource(
         payload.get("recommendationResourceName"),
@@ -433,9 +483,7 @@ def _asset_link_query(customer_id: str, payload: dict[str, Any]) -> str:
     raise ValidationError("ownerType must be CAMPAIGN, AD_GROUP, or ASSET_GROUP")
 
 
-def _parent_campaign_budget_query(
-    parent_resource: str, parent_id: str
-) -> tuple[str, str]:
+def _parent_campaign_budget_query(parent_resource: str, parent_id: str) -> tuple[str, str]:
     parent_field = f"{parent_resource}.id"
     if parent_resource != "campaign":
         return (
@@ -736,6 +784,7 @@ class PlanBuilder:
                     "campaign_budget": budget_name,
                     "status": "PAUSED",
                     "advertising_channel_type": "PERFORMANCE_MAX",
+                    "brand_guidelines_enabled": False,
                     "maximize_conversions": {},
                     "contains_eu_political_advertising": _campaign_declaration(
                         bool(payload.get("containsEuPoliticalAdvertising"))
@@ -1022,15 +1071,41 @@ class PlanBuilder:
             minimum=1,
             maximum=10,
         )
-        parent, budget = _campaign_state(before, campaign_id, require_channel=True)
-        if str(parent.get("status")) != "PAUSED":
-            raise ValidationError(
-                "Campaign targeting can only be added while the campaign is PAUSED"
-            )
-        if _targeting_rows(before):
-            raise ValidationError("Campaign already has location or language targeting")
+        _, budget = _campaign_state(before, campaign_id, require_channel=True)
+        existing_rows = _targeting_rows(before)
         _require_geo_constants(before, geo_ids)
         _require_language_constants(before, language_ids)
+        desired_locations = {f"geoTargetConstants/{geo_id}" for geo_id in geo_ids}
+        desired_languages = {f"languageConstants/{language_id}" for language_id in language_ids}
+        kept_locations: set[str] = set()
+        kept_languages: set[str] = set()
+        removed_resources: list[str] = []
+        for criterion in existing_rows:
+            if criterion.get("negative") is True:
+                continue
+            criterion_type = criterion.get("type")
+            status = criterion.get("status")
+            resource_name = str(criterion["resource_name"])
+            if criterion_type == "LOCATION":
+                constant = str(criterion["location"]["geo_target_constant"])
+                if (
+                    status == "ENABLED"
+                    and constant in desired_locations
+                    and constant not in kept_locations
+                ):
+                    kept_locations.add(constant)
+                else:
+                    removed_resources.append(resource_name)
+            else:
+                constant = str(criterion["language"]["language_constant"])
+                if (
+                    status == "ENABLED"
+                    and constant in desired_languages
+                    and constant not in kept_languages
+                ):
+                    kept_languages.add(constant)
+                else:
+                    removed_resources.append(resource_name)
         campaign_resource = _resource_name(customer_id, "campaigns", campaign_id)
         items = [
             MutationItem(
@@ -1050,23 +1125,21 @@ class PlanBuilder:
                 "campaign-geo-mode",
             )
         ]
-        for index, geo_id in enumerate(geo_ids, start=1):
+        for index, resource_name in enumerate(removed_resources, start=1):
             items.append(
                 MutationItem(
                     "campaign_criterion_operation",
-                    "create",
-                    {
-                        "campaign": campaign_resource,
-                        "status": "ENABLED",
-                        "negative": False,
-                        "location": {
-                            "geo_target_constant": f"geoTargetConstants/{geo_id}"
-                        },
-                    },
-                    correlation_id=f"location-{index}",
+                    "remove",
+                    {"resource_name": resource_name},
+                    correlation_id=f"remove-criterion-{index}",
                 )
             )
-        for index, language_id in enumerate(language_ids, start=1):
+        location_index = 0
+        for geo_id in geo_ids:
+            constant = f"geoTargetConstants/{geo_id}"
+            if constant in kept_locations:
+                continue
+            location_index += 1
             items.append(
                 MutationItem(
                     "campaign_criterion_operation",
@@ -1075,11 +1148,28 @@ class PlanBuilder:
                         "campaign": campaign_resource,
                         "status": "ENABLED",
                         "negative": False,
-                        "language": {
-                            "language_constant": f"languageConstants/{language_id}"
-                        },
+                        "location": {"geo_target_constant": constant},
                     },
-                    correlation_id=f"language-{index}",
+                    correlation_id=f"location-{location_index}",
+                )
+            )
+        language_index = 0
+        for language_id in language_ids:
+            constant = f"languageConstants/{language_id}"
+            if constant in kept_languages:
+                continue
+            language_index += 1
+            items.append(
+                MutationItem(
+                    "campaign_criterion_operation",
+                    "create",
+                    {
+                        "campaign": campaign_resource,
+                        "status": "ENABLED",
+                        "negative": False,
+                        "language": {"language_constant": constant},
+                    },
+                    correlation_id=f"language-{language_index}",
                 )
             )
         return self._plan(
@@ -1186,11 +1276,7 @@ class PlanBuilder:
     def _build_campaign_bidding(self, **values: Any) -> WritePlan:
         profile, customer_id, policy_id, payload, before = _values(values)
         campaign_id = _id(payload.get("campaignId"), field="campaignId")
-        campaign, current_budget = _campaign_state(before, campaign_id)
-        if str(campaign.get("status")) != "PAUSED":
-            raise ValidationError(
-                "Campaign bidding can only be changed while the campaign is PAUSED"
-            )
+        _, current_budget = _campaign_state(before, campaign_id)
         strategy = str(payload.get("strategy"))
         resource: dict[str, Any] = {
             "resource_name": _resource_name(customer_id, "campaigns", campaign_id)
@@ -1201,22 +1287,35 @@ class PlanBuilder:
             if payload.get("enhancedCpcEnabled", False) is not False:
                 raise ValidationError("Enhanced CPC is not supported by policy schema v1")
             resource["manual_cpc"] = {"enhanced_cpc_enabled": False}
-            mask = ("manual_cpc",)
-        elif strategy in {
-            "MAXIMIZE_CONVERSIONS",
-            "MAXIMIZE_CONVERSION_VALUE",
-            "TARGET_ROAS",
-        }:
-            raise NotSupportedError(
-                "This bidding strategy has no corresponding approved monetary limit "
-                "in policy schema v1"
-            )
+            mask = ("manual_cpc.enhanced_cpc_enabled",)
+        elif strategy == "MAXIMIZE_CONVERSIONS":
+            amount = _micros(payload.get("targetCpaMicros"), field="targetCpaMicros", optional=True)
+            resource["maximize_conversions"] = {
+                "target_cpa_micros": amount if amount is not None else 0
+            }
+            if amount is not None:
+                after["targetCpaMicros"] = str(amount)
+            mask = ("maximize_conversions.target_cpa_micros",)
+        elif strategy == "MAXIMIZE_CONVERSION_VALUE":
+            roas = _roas(payload.get("targetRoas"), field="targetRoas", optional=True)
+            resource["maximize_conversion_value"] = {
+                "target_roas": roas if roas is not None else 0.0
+            }
+            if roas is not None:
+                after["targetRoas"] = roas
+            mask = ("maximize_conversion_value.target_roas",)
+        elif strategy == "TARGET_ROAS":
+            roas = _roas(payload.get("targetRoas"), field="targetRoas")
+            assert roas is not None
+            resource["target_roas"] = {"target_roas": roas}
+            after["targetRoas"] = roas
+            mask = ("target_roas.target_roas",)
         elif strategy == "TARGET_CPA":
             amount = _micros(payload.get("targetCpaMicros"), field="targetCpaMicros")
             assert amount is not None
             resource["target_cpa"] = {"target_cpa_micros": amount}
             after["targetCpaMicros"] = str(amount)
-            mask = ("target_cpa",)
+            mask = ("target_cpa.target_cpa_micros",)
         else:
             raise ValidationError("strategy is not supported by the typed bidding preview")
         after["currentCampaignDailyBudgetMicros"] = str(current_budget)
@@ -1692,6 +1791,17 @@ class PlanBuilder:
             }
         else:
             raise ValidationError("adType must be RESPONSIVE_SEARCH_AD or APP_AD")
+        ad_status = "ENABLED" if ad_type == "APP_AD" else "PAUSED"
+        after: dict[str, Any] = {
+            "adGroupId": ad_group_id,
+            "name": name,
+            "adType": ad_type,
+            "status": ad_status,
+        }
+        spend_affecting = ad_status == "ENABLED"
+        if spend_affecting:
+            _require_paused_parent(before, "ad_group", ad_group_id)
+            _set_parent_campaign_budget(after, before, "ad_group", ad_group_id)
         return self._plan(
             profile=profile,
             customer_id=customer_id,
@@ -1699,14 +1809,14 @@ class PlanBuilder:
             kind="ad_create",
             related_key=f"ad-group:{ad_group_id}:ad-name:{name.casefold()}",
             before=before,
-            after={"adGroupId": ad_group_id, "name": name, "adType": ad_type, "status": "PAUSED"},
+            after=after,
             items=[
                 MutationItem(
                     "ad_group_ad_operation",
                     "create",
                     {
                         "ad_group": _resource_name(customer_id, "adGroups", ad_group_id),
-                        "status": "PAUSED",
+                        "status": ad_status,
                         "ad": ad,
                     },
                     correlation_id="ad",
@@ -1715,6 +1825,167 @@ class PlanBuilder:
             readback_queries=tuple(
                 query for _, query in state_queries("ad_create", customer_id, payload)
             ),
+            spend_affecting=spend_affecting,
+        )
+
+    def _build_ad_update(self, **values: Any) -> WritePlan:
+        profile, customer_id, policy_id, payload, before = _values(values)
+        ad_group_id = _id(payload.get("adGroupId"), field="adGroupId")
+        ad_id = _id(payload.get("adId"), field="adId")
+        _, current_ad = _ad_state(before, ad_group_id, ad_id)
+        _require_paused_parent(before, "ad_group", ad_group_id)
+        ad_type = str(current_ad["type"])
+        after: dict[str, Any] = {
+            "adGroupId": ad_group_id,
+            "adId": ad_id,
+            "adType": ad_type,
+        }
+        items: list[MutationItem] = []
+        if payload.get("status") is not None:
+            status = str(payload["status"])
+            if status not in _STATUSES:
+                raise ValidationError("status must be ENABLED or PAUSED")
+            if ad_type == "APP_AD" and status == "PAUSED":
+                raise ValidationError(
+                    "APP_AD status cannot be PAUSED; pause the parent ad group or campaign instead"
+                )
+            after["status"] = status
+            items.append(
+                MutationItem(
+                    "ad_group_ad_operation",
+                    "update",
+                    {
+                        "resource_name": _resource_name(
+                            customer_id, "adGroupAds", f"{ad_group_id}~{ad_id}"
+                        ),
+                        "status": status,
+                    },
+                    ("status",),
+                    "ad-group-ad",
+                )
+            )
+        ad_resource: dict[str, Any] = {"resource_name": _resource_name(customer_id, "ads", ad_id)}
+        ad_mask: list[str] = []
+        if ad_type == "RESPONSIVE_SEARCH_AD":
+            if (
+                payload.get("imageAssets") is not None
+                or payload.get("youtubeVideoAssets") is not None
+            ):
+                raise ValidationError(
+                    "imageAssets and youtubeVideoAssets are only supported for APP_AD"
+                )
+            if payload.get("finalUrl") is not None:
+                final_url = _url(payload["finalUrl"])
+                ad_resource["final_urls"] = [final_url]
+                ad_mask.append("final_urls")
+                after["finalUrl"] = final_url
+            rsa: dict[str, Any] = {}
+            if payload.get("headlines") is not None:
+                headlines = _texts(
+                    payload["headlines"],
+                    field="headlines",
+                    minimum=3,
+                    maximum=15,
+                    item_limit=30,
+                )
+                rsa["headlines"] = [{"text": text} for text in headlines]
+                ad_mask.append("responsive_search_ad.headlines")
+                after["headlines"] = list(headlines)
+            if payload.get("descriptions") is not None:
+                descriptions = _texts(
+                    payload["descriptions"],
+                    field="descriptions",
+                    minimum=2,
+                    maximum=4,
+                    item_limit=90,
+                )
+                rsa["descriptions"] = [{"text": text} for text in descriptions]
+                ad_mask.append("responsive_search_ad.descriptions")
+                after["descriptions"] = list(descriptions)
+            if rsa:
+                ad_resource["responsive_search_ad"] = rsa
+        else:
+            if payload.get("finalUrl") is not None:
+                raise ValidationError("finalUrl is only supported for RESPONSIVE_SEARCH_AD")
+            app_ad: dict[str, Any] = {}
+            if payload.get("headlines") is not None:
+                headlines = _texts(
+                    payload["headlines"],
+                    field="headlines",
+                    minimum=2,
+                    maximum=5,
+                    item_limit=30,
+                )
+                app_ad["headlines"] = [{"text": text} for text in headlines]
+                ad_mask.append("app_ad.headlines")
+                after["headlines"] = list(headlines)
+            if payload.get("descriptions") is not None:
+                descriptions = _texts(
+                    payload["descriptions"],
+                    field="descriptions",
+                    minimum=1,
+                    maximum=5,
+                    item_limit=90,
+                )
+                app_ad["descriptions"] = [{"text": text} for text in descriptions]
+                ad_mask.append("app_ad.descriptions")
+                after["descriptions"] = list(descriptions)
+            if payload.get("imageAssets") is not None:
+                raw_images = payload["imageAssets"]
+                if not isinstance(raw_images, (list, tuple)) or len(raw_images) > 20:
+                    raise ValidationError(
+                        "imageAssets must contain at most 20 asset resource names"
+                    )
+                images = [
+                    _resource(
+                        item,
+                        customer_id=customer_id,
+                        collection="assets",
+                        field="imageAssets",
+                    )
+                    for item in raw_images
+                ]
+                app_ad["images"] = [{"asset": item} for item in images]
+                ad_mask.append("app_ad.images")
+                after["imageAssets"] = images
+            if payload.get("youtubeVideoAssets") is not None:
+                raw_videos = payload["youtubeVideoAssets"]
+                if not isinstance(raw_videos, (list, tuple)) or len(raw_videos) > 20:
+                    raise ValidationError(
+                        "youtubeVideoAssets must contain at most 20 asset resource names"
+                    )
+                videos = [
+                    _resource(
+                        item,
+                        customer_id=customer_id,
+                        collection="assets",
+                        field="youtubeVideoAssets",
+                    )
+                    for item in raw_videos
+                ]
+                app_ad["youtube_videos"] = [{"asset": item} for item in videos]
+                ad_mask.append("app_ad.youtube_videos")
+                after["youtubeVideoAssets"] = videos
+            if app_ad:
+                ad_resource["app_ad"] = app_ad
+        if ad_mask:
+            items.append(MutationItem("ad_operation", "update", ad_resource, tuple(ad_mask), "ad"))
+        if not items:
+            raise ValidationError("ad_update_preview requires at least one changed field")
+        _set_parent_campaign_budget(after, before, "ad_group", ad_group_id)
+        return self._plan(
+            profile=profile,
+            customer_id=customer_id,
+            policy_id=policy_id,
+            kind="ad_update",
+            related_key=f"ad-group:{ad_group_id}:ad:{ad_id}",
+            before=before,
+            after=after,
+            items=items,
+            readback_queries=tuple(
+                query for _, query in state_queries("ad_update", customer_id, payload)
+            ),
+            spend_affecting=True,
         )
 
     def _build_recommendation_apply(self, **values: Any) -> WritePlan:
@@ -1873,12 +2144,8 @@ def _targeting_rows(before: dict[str, Any]) -> tuple[dict[str, Any], ...]:
             raise ValidationError("Campaign targeting evidence is malformed")
         location = criterion.get("location")
         language = criterion.get("language")
-        location_name = (
-            location.get("geo_target_constant") if isinstance(location, dict) else None
-        )
-        language_name = (
-            language.get("language_constant") if isinstance(language, dict) else None
-        )
+        location_name = location.get("geo_target_constant") if isinstance(location, dict) else None
+        language_name = language.get("language_constant") if isinstance(language, dict) else None
         if criterion_type == "LOCATION":
             if not isinstance(location_name, str) or not location_name or language_name is not None:
                 raise ValidationError("Campaign targeting evidence is malformed")
@@ -1925,6 +2192,28 @@ def _ad_group_state(before: dict[str, Any], ad_group_id: str) -> dict[str, Any]:
     return group
 
 
+def _ad_state(
+    before: dict[str, Any], ad_group_id: str, ad_id: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    items = _query_items(before, 0, evidence="Ad state")
+    if len(items) != 1:
+        raise ValidationError("Ad state must resolve exactly once")
+    group = items[0].get("ad_group")
+    ad_group_ad = items[0].get("ad_group_ad")
+    ad = ad_group_ad.get("ad") if isinstance(ad_group_ad, dict) else None
+    if (
+        not isinstance(group, dict)
+        or str(group.get("id")) != ad_group_id
+        or not isinstance(ad_group_ad, dict)
+        or ad_group_ad.get("status") not in _STATUSES
+        or not isinstance(ad, dict)
+        or str(ad.get("id")) != ad_id
+        or ad.get("type") not in {"RESPONSIVE_SEARCH_AD", "APP_AD"}
+    ):
+        raise ValidationError("Ad state must resolve exactly once")
+    return ad_group_ad, ad
+
+
 def _require_paused_parent(before: dict[str, Any], parent_resource: str, parent_id: str) -> None:
     items = _query_items(before, 1, evidence="Parent campaign")
     if len(items) != 1:
@@ -1936,10 +2225,12 @@ def _require_paused_parent(before: dict[str, Any], parent_resource: str, parent_
         or str(parent.get("id")) != parent_id
         or not isinstance(campaign, dict)
         or campaign.get("id") is None
-        or campaign.get("status") != "PAUSED"
+        or campaign.get("status") not in _STATUSES
         or not isinstance(campaign.get("campaign_budget"), str)
     ):
-        raise ValidationError("Child enablement requires an authoritative PAUSED parent campaign")
+        raise ValidationError(
+            "Child enablement requires an authoritative ENABLED or PAUSED parent campaign"
+        )
 
 
 def _positive_keyword_criterion(before: dict[str, Any], criterion_id: str) -> dict[str, Any]:
@@ -1976,28 +2267,57 @@ def _https_urls(value: object) -> tuple[str, ...]:
     return tuple(urls)
 
 
+def _extract_campaign_bid_micros(campaign: dict[str, Any]) -> int | None:
+    target_cpa = campaign.get("target_cpa")
+    if isinstance(target_cpa, dict):
+        amount = _positive_integer(target_cpa.get("target_cpa_micros"))
+        if amount is not None:
+            return amount
+    maximize_conversions = campaign.get("maximize_conversions")
+    if isinstance(maximize_conversions, dict):
+        amount = _positive_integer(maximize_conversions.get("target_cpa_micros"))
+        if amount is not None:
+            return amount
+    return None
+
+
 def _require_search_enable_readiness(
     before: dict[str, Any], campaign_id: str
-) -> tuple[int, int, tuple[str, ...]]:
+) -> tuple[int, int | None, tuple[str, ...]]:
     campaign, budget = _campaign_state(before, campaign_id, require_channel=True)
     if str(campaign.get("status")) != "PAUSED":
         raise ValidationError("Only a PAUSED campaign can be enabled")
-    if str(campaign.get("advertising_channel_type")) != "SEARCH":
-        raise NotSupportedError("v0.2 can enable only Search campaigns")
-    if str(campaign.get("bidding_strategy_type")) != "MANUAL_CPC":
-        raise NotSupportedError("v0.2 can enable only Search campaigns using MANUAL_CPC")
-    manual_cpc = campaign.get("manual_cpc")
-    if (
-        not isinstance(manual_cpc, dict)
-        or manual_cpc.get("enhanced_cpc_enabled") is not False
-    ):
-        raise ValidationError("Campaign enable requires Enhanced CPC to be disabled")
-    geo_setting = campaign.get("geo_target_type_setting")
-    if not isinstance(geo_setting, dict) or any(
-        str(geo_setting.get(field)) != "PRESENCE"
-        for field in ("positive_geo_target_type", "negative_geo_target_type")
-    ):
-        raise ValidationError("Campaign enable requires presence-only geo targeting")
+    channel = str(campaign.get("advertising_channel_type"))
+    if channel not in {"SEARCH", "MULTI_CHANNEL", "PERFORMANCE_MAX"}:
+        raise NotSupportedError(
+            "Campaign enable supports only SEARCH, MULTI_CHANNEL (APP_CAMPAIGN), "
+            "and PERFORMANCE_MAX campaigns"
+        )
+    strategy = str(campaign.get("bidding_strategy_type"))
+    if strategy not in {
+        "MANUAL_CPC",
+        "TARGET_CPA",
+        "MAXIMIZE_CONVERSIONS",
+        "MAXIMIZE_CONVERSION_VALUE",
+        "TARGET_ROAS",
+    }:
+        raise NotSupportedError(
+            "Campaign enable requires MANUAL_CPC, TARGET_CPA, MAXIMIZE_CONVERSIONS, "
+            "MAXIMIZE_CONVERSION_VALUE, or TARGET_ROAS"
+        )
+    if strategy == "MANUAL_CPC":
+        if channel != "SEARCH":
+            raise ValidationError("MANUAL_CPC is only supported for SEARCH campaign enablement")
+        manual_cpc = campaign.get("manual_cpc")
+        if not isinstance(manual_cpc, dict) or manual_cpc.get("enhanced_cpc_enabled") is not False:
+            raise ValidationError("Campaign enable requires Enhanced CPC to be disabled")
+    if channel == "SEARCH":
+        geo_setting = campaign.get("geo_target_type_setting")
+        if not isinstance(geo_setting, dict) or any(
+            str(geo_setting.get(field)) != "PRESENCE"
+            for field in ("positive_geo_target_type", "negative_geo_target_type")
+        ):
+            raise ValidationError("Campaign enable requires presence-only geo targeting")
 
     targeting = _targeting_rows(before)
     positive_locations = [
@@ -2018,6 +2338,35 @@ def _require_search_enable_readiness(
     ]
     if not positive_locations or not positive_languages:
         raise ValidationError("Campaign enable requires enabled location and language targeting")
+
+    if channel == "PERFORMANCE_MAX":
+        pmax_urls: set[str] = set()
+        seen_asset_groups: set[str] = set()
+        for row in _query_items(before, 5, evidence="Performance Max asset group"):
+            campaign_row = row.get("campaign")
+            asset_group = row.get("asset_group")
+            if (
+                not isinstance(campaign_row, dict)
+                or str(campaign_row.get("id")) != campaign_id
+                or not isinstance(asset_group, dict)
+                or asset_group.get("id") is None
+                or not str(asset_group["id"]).isascii()
+                or not str(asset_group["id"]).isdigit()
+                or asset_group.get("status") not in _STATUSES
+            ):
+                raise ValidationError("Performance Max asset group evidence is malformed")
+            group_id = str(asset_group["id"])
+            if group_id in seen_asset_groups:
+                raise ValidationError("Performance Max asset group evidence contains duplicates")
+            seen_asset_groups.add(group_id)
+            if asset_group.get("status") == "ENABLED":
+                pmax_urls.update(_https_urls(asset_group.get("final_urls")))
+        if not pmax_urls:
+            raise ValidationError(
+                "Performance Max campaign enable requires an enabled asset group "
+                "with HTTPS final URLs"
+            )
+        return budget, _extract_campaign_bid_micros(campaign), tuple(sorted(pmax_urls))
 
     enabled_groups: set[str] = set()
     all_groups: set[str] = set()
@@ -2043,7 +2392,60 @@ def _require_search_enable_readiness(
     if not enabled_groups:
         raise ValidationError("Campaign enable requires an enabled ad group")
 
+    if channel == "MULTI_CHANNEL":
+        app_setting = campaign.get("app_campaign_setting")
+        if (
+            str(campaign.get("advertising_channel_sub_type")) != "APP_CAMPAIGN"
+            or not isinstance(app_setting, dict)
+            or not isinstance(app_setting.get("app_id"), str)
+            or not app_setting["app_id"].strip()
+            or app_setting.get("app_store") not in {"APPLE_APP_STORE", "GOOGLE_APP_STORE"}
+        ):
+            raise ValidationError(
+                "App campaign enable requires APP_CAMPAIGN sub-type and valid app_campaign_setting"
+            )
+        eligible_app_ads = 0
+        seen_app_ads: set[str] = set()
+        for row in _query_items(before, 4, evidence="App ad"):
+            campaign_row = row.get("campaign")
+            group = row.get("ad_group")
+            ad_group_ad = row.get("ad_group_ad")
+            if (
+                not isinstance(campaign_row, dict)
+                or str(campaign_row.get("id")) != campaign_id
+                or not isinstance(group, dict)
+                or group.get("id") is None
+                or str(group.get("id")) not in all_groups
+                or group.get("status") not in _STATUSES
+                or not isinstance(ad_group_ad, dict)
+                or ad_group_ad.get("status") not in _STATUSES
+                or not isinstance(ad_group_ad.get("ad"), dict)
+                or ad_group_ad["ad"].get("id") is None
+                or not str(ad_group_ad["ad"]["id"]).isascii()
+                or not str(ad_group_ad["ad"]["id"]).isdigit()
+                or not isinstance(ad_group_ad["ad"].get("type"), str)
+                or not isinstance(ad_group_ad.get("policy_summary"), dict)
+                or not isinstance(ad_group_ad["policy_summary"].get("approval_status"), str)
+                or not isinstance(ad_group_ad["policy_summary"].get("review_status"), str)
+            ):
+                raise ValidationError("App ad evidence is malformed")
+            ad_key = f"{group['id']}~{ad_group_ad['ad']['id']}"
+            if ad_key in seen_app_ads:
+                raise ValidationError("App ad evidence contains duplicates")
+            seen_app_ads.add(ad_key)
+            if (
+                ad_group_ad.get("status") == "ENABLED"
+                and ad_group_ad["ad"].get("type") == "APP_AD"
+                and ad_group_ad["policy_summary"].get("approval_status") != "DISAPPROVED"
+                and str(group.get("id")) in enabled_groups
+            ):
+                eligible_app_ads += 1
+        if not eligible_app_ads:
+            raise ValidationError("App campaign enable requires an enabled non-disapproved APP_AD")
+        return budget, _extract_campaign_bid_micros(campaign), ()
+
     effective_bids: list[int] = []
+    enabled_keywords = 0
     seen_criteria: set[str] = set()
     for row in _query_items(before, 3, evidence="Search keyword"):
         campaign_row = row.get("campaign")
@@ -2080,15 +2482,17 @@ def _require_search_enable_readiness(
             or str(group.get("id")) not in enabled_groups
         ):
             continue
-        bid = _positive_integer(criterion.get("effective_cpc_bid_micros"))
-        bid_source = str(criterion.get("effective_cpc_bid_source"))
-        if bid is None or bid_source not in {"AD_GROUP", "AD_GROUP_CRITERION"}:
-            raise ValidationError(
-                "Campaign enable requires an authoritative positive effective CPC bid "
-                "for every enabled keyword"
-            )
-        effective_bids.append(bid)
-    if not effective_bids:
+        enabled_keywords += 1
+        if strategy == "MANUAL_CPC":
+            bid = _positive_integer(criterion.get("effective_cpc_bid_micros"))
+            bid_source = str(criterion.get("effective_cpc_bid_source"))
+            if bid is None or bid_source not in {"AD_GROUP", "AD_GROUP_CRITERION"}:
+                raise ValidationError(
+                    "Campaign enable requires an authoritative positive effective CPC bid "
+                    "for every enabled keyword"
+                )
+            effective_bids.append(bid)
+    if not enabled_keywords:
         raise ValidationError("Campaign enable requires an enabled positive keyword")
 
     landing_urls: set[str] = set()
@@ -2112,9 +2516,7 @@ def _require_search_enable_readiness(
             or not str(ad_group_ad["ad"]["id"]).isdigit()
             or not isinstance(ad_group_ad["ad"].get("type"), str)
             or not isinstance(ad_group_ad.get("policy_summary"), dict)
-            or not isinstance(
-                ad_group_ad["policy_summary"].get("approval_status"), str
-            )
+            or not isinstance(ad_group_ad["policy_summary"].get("approval_status"), str)
             or not isinstance(ad_group_ad["policy_summary"].get("review_status"), str)
         ):
             raise ValidationError("Search ad evidence is malformed")
@@ -2134,7 +2536,10 @@ def _require_search_enable_readiness(
         raise ValidationError(
             "Campaign enable requires an approved responsive search ad with HTTPS final URLs"
         )
-    return budget, max(effective_bids), tuple(sorted(landing_urls))
+    resolved_bid = (
+        max(effective_bids) if strategy == "MANUAL_CPC" else _extract_campaign_bid_micros(campaign)
+    )
+    return budget, resolved_bid, tuple(sorted(landing_urls))
 
 
 def _set_parent_campaign_budget(
@@ -2145,9 +2550,7 @@ def _set_parent_campaign_budget(
         after["currentCampaignDailyBudgetMicros"] = str(budget)
 
 
-def _find_parent_campaign_budget(
-    value: Any, parent_resource: str, parent_id: str
-) -> int | None:
+def _find_parent_campaign_budget(value: Any, parent_resource: str, parent_id: str) -> int | None:
     campaign_id: str | None = None
     campaign_budget_resource: str | None = None
     for nested in _walk_dicts(value):

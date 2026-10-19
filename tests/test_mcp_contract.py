@@ -95,9 +95,9 @@ def test_bounded_geo_and_criterion_schemas_fail_closed(
     async def inspect() -> None:
         tools = await create_mcp(config=accounts_config, adapter=fake_adapter).list_tools()
         for name in ("keyword_ideas", "forecast_run"):
-            schema = next(tool for tool in tools if tool.name == name).inputSchema[
-                "properties"
-            ]["geoTargetIds"]
+            schema = next(tool for tool in tools if tool.name == name).inputSchema["properties"][
+                "geoTargetIds"
+            ]
             assert schema["minItems"] == 1
             assert schema["maxItems"] == 20
             assert schema["uniqueItems"] is True
@@ -436,6 +436,12 @@ def test_every_public_tool_dispatches(accounts_config: Any, fake_adapter: Any) -
                 "descriptions": ["Description"],
                 "finalUrl": "https://example.com",
             },
+            "ad_update_preview": {
+                **write_scoped,
+                "adGroupId": "1",
+                "adId": "2",
+                "status": "PAUSED",
+            },
             "recommendation_apply_preview": {
                 **write_scoped,
                 "recommendationResourceName": "customers/2222222222/recommendations/abc~1",
@@ -452,7 +458,7 @@ def test_every_public_tool_dispatches(accounts_config: Any, fake_adapter: Any) -
         for tool_name, arguments in calls.items():
             _, structured = _split(await server.call_tool(tool_name, arguments))
             assert structured["status"] in {"ok", "partial"}
-        assert len(calls) == 45
+        assert len(calls) == 46
 
     asyncio.run(call())
 

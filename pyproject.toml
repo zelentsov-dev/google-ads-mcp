@@ -22,7 +22,7 @@ classifiers = [
 dependencies = [
   "google-ads==31.2.0",
   "keyring==25.7.0",
-  "mcp==1.29.1",
+  "mcp==1.30.0",
   "pydantic==2.13.4",
   "typing-extensions==4.16.0",
 ]

@@ -46,9 +46,7 @@ def verify_workflows(
                 "per_page": "100",
             }
         )
-        url = (
-            f"https://api.github.com/repos/{repository}/actions/workflows/{encoded}/runs?{query}"
-        )
+        url = f"https://api.github.com/repos/{repository}/actions/workflows/{encoded}/runs?{query}"
         if not _successful_exact_main_run(requester(url, token), release_sha):
             missing.append(workflow)
     if missing:
@@ -68,10 +66,10 @@ def _request_json(url: str, token: str) -> object:
             "GET",
             urllib.parse.urlunsplit(("", "", parsed.path, parsed.query, "")),
             headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "google-ads-mcp-release-preflight",
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "google-ads-mcp-release-preflight",
             },
         )
         response = connection.getresponse()

@@ -10,13 +10,16 @@ from google_ads_mcp.errors import NotSupportedError, ValidationError
 from google_ads_mcp.plans import (
     PlanBuilder,
     _ad_group_state,
+    _ad_state,
     _campaign_state,
+    _extract_campaign_bid_micros,
     _find_integer,
     _find_parent_campaign_budget,
     _https_urls,
     _positive_keyword_criterion,
     _query_items,
     _require_paused_parent,
+    _roas,
     _targeting_rows,
     state_queries,
 )
@@ -134,6 +137,14 @@ def _payloads() -> dict[str, dict[str, Any]]:
             "imageAssets": [],
             "youtubeVideoAssets": [],
         },
+        "ad_update": {
+            "adGroupId": "1",
+            "adId": "2",
+            "status": "PAUSED",
+            "finalUrl": "https://example.com/updated",
+            "headlines": ["One", "Two", "Three"],
+            "descriptions": ["Description one", "Description two"],
+        },
         "recommendation_apply": {
             "recommendationResourceName": f"customers/{CUSTOMER}/recommendations/1"
         },
@@ -223,29 +234,21 @@ def _ready_search_before() -> dict[str, Any]:
                     {
                         "campaign_criterion": {
                             "criterion_id": "2840",
-                            "resource_name": (
-                                f"customers/{CUSTOMER}/campaignCriteria/1~2840"
-                            ),
+                            "resource_name": (f"customers/{CUSTOMER}/campaignCriteria/1~2840"),
                             "type": "LOCATION",
                             "status": "ENABLED",
                             "negative": False,
-                            "location": {
-                                "geo_target_constant": "geoTargetConstants/2840"
-                            },
+                            "location": {"geo_target_constant": "geoTargetConstants/2840"},
                         }
                     },
                     {
                         "campaign_criterion": {
                             "criterion_id": "1000",
-                            "resource_name": (
-                                f"customers/{CUSTOMER}/campaignCriteria/1~1000"
-                            ),
+                            "resource_name": (f"customers/{CUSTOMER}/campaignCriteria/1~1000"),
                             "type": "LANGUAGE",
                             "status": "ENABLED",
                             "negative": False,
-                            "language": {
-                                "language_constant": "languageConstants/1000"
-                            },
+                            "language": {"language_constant": "languageConstants/1000"},
                         }
                     },
                 ]
@@ -258,7 +261,7 @@ def _ready_search_before() -> dict[str, Any]:
                             "id": "10",
                             "status": "ENABLED",
                             "cpc_bid_micros": "250000",
-                        }
+                        },
                     }
                 ]
             },
@@ -302,6 +305,7 @@ def _ready_search_before() -> dict[str, Any]:
                     }
                 ]
             },
+            {"items": []},
         ]
     }
 
@@ -392,6 +396,29 @@ def _ad_group_update_before(*, current_bid: object = "100000") -> dict[str, Any]
     return before
 
 
+def _ad_update_before(
+    *, ad_type: str = "RESPONSIVE_SEARCH_AD", parent_status: str = "PAUSED"
+) -> dict[str, Any]:
+    before = _criterion_update_before(parent_status=parent_status)
+    before["objects"][0]["items"] = [
+        {
+            "ad_group": {"id": "1"},
+            "ad_group_ad": {
+                "resource_name": f"customers/{CUSTOMER}/adGroupAds/1~2",
+                "status": "PAUSED",
+                "ad": {
+                    "resource_name": f"customers/{CUSTOMER}/ads/2",
+                    "id": "2",
+                    "name": "Ad",
+                    "type": ad_type,
+                    "final_urls": ["https://example.com"],
+                },
+            },
+        }
+    ]
+    return before
+
+
 def _before_for(kind: str) -> dict[str, Any]:
     if kind == "campaign_targeting":
         return _targeting_before()
@@ -399,6 +426,8 @@ def _before_for(kind: str) -> dict[str, Any]:
         return _campaign_bidding_before()
     if kind == "criterion_update":
         return _criterion_update_before()
+    if kind == "ad_update":
+        return _ad_update_before()
     return {"objects": []}
 
 
@@ -493,9 +522,7 @@ def test_authoritative_state_helpers_reject_every_incomplete_shape() -> None:
     with pytest.raises(ValidationError, match="CPC evidence"):
         _ad_group_state(_ad_group_update_before(current_bid="invalid"), "1")
     with pytest.raises(ValidationError, match="Parent campaign state"):
-        _require_paused_parent(
-            {"objects": [{"items": []}, {"items": []}]}, "ad_group", "1"
-        )
+        _require_paused_parent({"objects": [{"items": []}, {"items": []}]}, "ad_group", "1")
     with pytest.raises(ValidationError, match="Keyword criterion state"):
         _positive_keyword_criterion({"objects": [{"items": []}]}, "2")
     invalid_keyword = _criterion_update_before()
@@ -565,12 +592,8 @@ def test_campaign_targeting_is_atomic_presence_only_and_spend_bounded() -> None:
         "geo_target_type_setting.positive_geo_target_type",
         "geo_target_type_setting.negative_geo_target_type",
     )
-    assert plan.items[1].resource["location"] == {
-        "geo_target_constant": "geoTargetConstants/2840"
-    }
-    assert plan.items[2].resource["language"] == {
-        "language_constant": "languageConstants/1000"
-    }
+    assert plan.items[1].resource["location"] == {"geo_target_constant": "geoTargetConstants/2840"}
+    assert plan.items[2].resource["language"] == {"language_constant": "languageConstants/1000"}
 
 
 @pytest.mark.parametrize(
@@ -591,26 +614,13 @@ def test_campaign_targeting_rejects_invalid_id_sets(
         state_queries("campaign_targeting", CUSTOMER, payload)
 
 
-def test_campaign_targeting_requires_paused_empty_campaign_and_live_constants() -> None:
+def test_campaign_targeting_requires_non_removed_campaign_and_live_constants() -> None:
     payload = _payloads()["campaign_targeting"]
-    existing = _targeting_before()
-    existing["objects"][1]["items"] = [
-        {
-            "campaign_criterion": {
-                "criterion_id": "2840",
-                "resource_name": f"customers/{CUSTOMER}/campaignCriteria/1~2840",
-                "type": "LOCATION",
-                "status": "ENABLED",
-                "negative": False,
-                "location": {"geo_target_constant": "geoTargetConstants/2840"},
-            }
-        }
-    ]
-    cases: list[tuple[dict[str, Any], str]] = [(existing, "already has")]
+    cases: list[tuple[dict[str, Any], str]] = []
 
-    active = _targeting_before()
-    active["objects"][0]["items"][0]["campaign"]["status"] = "ENABLED"
-    cases.append((active, "PAUSED"))
+    removed = _targeting_before()
+    removed["objects"][0]["items"][0]["campaign"]["status"] = "REMOVED"
+    cases.append((removed, "resolve exactly once"))
 
     missing_geo = _targeting_before()
     missing_geo["objects"][2]["items"] = []
@@ -625,9 +635,7 @@ def test_campaign_targeting_requires_paused_empty_campaign_and_live_constants() 
     cases.append((missing_language, "languageId"))
 
     untargetable_language = _targeting_before()
-    untargetable_language["objects"][3]["items"][0]["language_constant"][
-        "targetable"
-    ] = False
+    untargetable_language["objects"][3]["items"][0]["language_constant"]["targetable"] = False
     cases.append((untargetable_language, "languageId"))
 
     missing_parent = _targeting_before()
@@ -658,6 +666,86 @@ def test_campaign_targeting_requires_paused_empty_campaign_and_live_constants() 
             )
 
 
+def test_campaign_targeting_reconciles_existing_criteria_and_keeps_negatives() -> None:
+    before = _targeting_before()
+    before["objects"][0]["items"][0]["campaign"]["status"] = "ENABLED"
+    before["objects"][1]["items"] = [
+        {
+            "campaign_criterion": {
+                "criterion_id": "2036",
+                "resource_name": f"customers/{CUSTOMER}/campaignCriteria/1~2036",
+                "type": "LOCATION",
+                "status": "ENABLED",
+                "negative": True,
+                "location": {"geo_target_constant": "geoTargetConstants/2036"},
+            }
+        },
+        {
+            "campaign_criterion": {
+                "criterion_id": "2840",
+                "resource_name": f"customers/{CUSTOMER}/campaignCriteria/1~2840",
+                "type": "LOCATION",
+                "status": "ENABLED",
+                "negative": False,
+                "location": {"geo_target_constant": "geoTargetConstants/2840"},
+            }
+        },
+        {
+            "campaign_criterion": {
+                "criterion_id": "2124",
+                "resource_name": f"customers/{CUSTOMER}/campaignCriteria/1~2124",
+                "type": "LOCATION",
+                "status": "ENABLED",
+                "negative": False,
+                "location": {"geo_target_constant": "geoTargetConstants/2124"},
+            }
+        },
+        {
+            "campaign_criterion": {
+                "criterion_id": "1000",
+                "resource_name": f"customers/{CUSTOMER}/campaignCriteria/1~1000",
+                "type": "LANGUAGE",
+                "status": "ENABLED",
+                "negative": False,
+                "language": {"language_constant": "languageConstants/1000"},
+            }
+        },
+        {
+            "campaign_criterion": {
+                "criterion_id": "1003",
+                "resource_name": f"customers/{CUSTOMER}/campaignCriteria/1~1003",
+                "type": "LANGUAGE",
+                "status": "ENABLED",
+                "negative": False,
+                "language": {"language_constant": "languageConstants/1003"},
+            }
+        },
+    ]
+    before["objects"][2]["items"].append(
+        {"geo_target_constant": {"id": "2826", "status": "ENABLED"}}
+    )
+    before["objects"][3]["items"].append({"language_constant": {"id": "1001", "targetable": True}})
+    plan = PlanBuilder().build(
+        "campaign_targeting",
+        profile="operator",
+        customer_id=CUSTOMER,
+        policy_id="policy",
+        payload={
+            "campaignId": "1",
+            "geoTargetIds": ["2840", "2826"],
+            "languageIds": ["1000", "1001"],
+        },
+        before=before,
+    )
+    assert [(item.correlation_id, item.action) for item in plan.items] == [
+        ("campaign-geo-mode", "update"),
+        ("remove-criterion-1", "remove"),
+        ("remove-criterion-2", "remove"),
+        ("location-1", "create"),
+        ("language-1", "create"),
+    ]
+
+
 def test_search_enable_readiness_accepts_only_complete_reviewed_state() -> None:
     plan = PlanBuilder().build(
         "campaign_status",
@@ -680,22 +768,24 @@ def test_search_enable_readiness_fails_closed_for_each_missing_requirement() -> 
     active["objects"][0]["items"][0]["campaign"]["status"] = "ENABLED"
     cases.append((active, ValidationError, "PAUSED"))
 
-    pmax = _ready_search_before()
-    pmax["objects"][0]["items"][0]["campaign"]["advertising_channel_type"] = (
+    display = _ready_search_before()
+    display["objects"][0]["items"][0]["campaign"]["advertising_channel_type"] = "DISPLAY"
+    cases.append((display, NotSupportedError, "SEARCH, MULTI_CHANNEL"))
+
+    pmax_manual_cpc = _ready_search_before()
+    pmax_manual_cpc["objects"][0]["items"][0]["campaign"]["advertising_channel_type"] = (
         "PERFORMANCE_MAX"
     )
-    cases.append((pmax, NotSupportedError, "Search"))
+    cases.append((pmax_manual_cpc, ValidationError, "MANUAL_CPC is only supported"))
 
     automated_bidding = _ready_search_before()
-    automated_bidding["objects"][0]["items"][0]["campaign"][
-        "bidding_strategy_type"
-    ] = "MAXIMIZE_CLICKS"
+    automated_bidding["objects"][0]["items"][0]["campaign"]["bidding_strategy_type"] = (
+        "MAXIMIZE_CLICKS"
+    )
     cases.append((automated_bidding, NotSupportedError, "MANUAL_CPC"))
 
     enhanced_cpc = _ready_search_before()
-    enhanced_cpc["objects"][0]["items"][0]["campaign"]["manual_cpc"][
-        "enhanced_cpc_enabled"
-    ] = True
+    enhanced_cpc["objects"][0]["items"][0]["campaign"]["manual_cpc"]["enhanced_cpc_enabled"] = True
     cases.append((enhanced_cpc, ValidationError, "Enhanced CPC"))
 
     unsafe_geo = _ready_search_before()
@@ -738,9 +828,7 @@ def test_search_enable_readiness_fails_closed_for_each_missing_requirement() -> 
     cases.append((no_keyword, ValidationError, "positive keyword"))
 
     no_effective_bid = _ready_search_before()
-    no_effective_bid["objects"][3]["items"][0]["ad_group_criterion"].pop(
-        "effective_cpc_bid_micros"
-    )
+    no_effective_bid["objects"][3]["items"][0]["ad_group_criterion"].pop("effective_cpc_bid_micros")
     cases.append((no_effective_bid, ValidationError, "effective CPC"))
 
     unknown_bid_source = _ready_search_before()
@@ -789,21 +877,19 @@ def test_search_enable_readiness_fails_closed_for_each_missing_requirement() -> 
     cases.append((duplicate_keyword, ValidationError, "keyword evidence contains duplicates"))
 
     pending_ad = _ready_search_before()
-    pending_ad["objects"][4]["items"][0]["ad_group_ad"]["policy_summary"][
-        "review_status"
-    ] = "REVIEW_IN_PROGRESS"
+    pending_ad["objects"][4]["items"][0]["ad_group_ad"]["policy_summary"]["review_status"] = (
+        "REVIEW_IN_PROGRESS"
+    )
     cases.append((pending_ad, ValidationError, "approved responsive search ad"))
 
     missing_final_url = _ready_search_before()
-    missing_final_url["objects"][4]["items"][0]["ad_group_ad"]["ad"].pop(
-        "final_urls"
-    )
+    missing_final_url["objects"][4]["items"][0]["ad_group_ad"]["ad"].pop("final_urls")
     cases.append((missing_final_url, ValidationError, "bounded HTTPS final URLs"))
 
     unsafe_final_url = _ready_search_before()
-    unsafe_final_url["objects"][4]["items"][0]["ad_group_ad"]["ad"][
-        "final_urls"
-    ] = ["http://example.com"]
+    unsafe_final_url["objects"][4]["items"][0]["ad_group_ad"]["ad"]["final_urls"] = [
+        "http://example.com"
+    ]
     cases.append((unsafe_final_url, ValidationError, "bounded HTTPS final URLs"))
 
     malformed_ad = _ready_search_before()
@@ -841,6 +927,299 @@ def test_search_enable_readiness_fails_closed_for_each_missing_requirement() -> 
                 payload=payload,
                 before=before,
             )
+
+
+def test_pmax_and_app_campaign_enable_readiness_and_automated_bidding() -> None:
+    payload = {"campaignId": "1", "status": "ENABLED"}
+
+    pmax_ready = _ready_search_before()
+    pmax_ready["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "PERFORMANCE_MAX",
+            "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
+            "maximize_conversions": {"target_cpa_micros": "300000"},
+        }
+    )
+    pmax_ready["objects"][5]["items"] = [
+        {
+            "campaign": {"id": "1"},
+            "asset_group": {
+                "id": "50",
+                "status": "PAUSED",
+                "final_urls": ["https://example.com/paused"],
+            },
+        },
+        {
+            "campaign": {"id": "1"},
+            "asset_group": {
+                "id": "51",
+                "status": "ENABLED",
+                "final_urls": ["https://example.com/pmax"],
+            },
+        },
+    ]
+    pmax_plan = PlanBuilder().build(
+        "campaign_status",
+        profile="operator",
+        customer_id=CUSTOMER,
+        policy_id="policy",
+        payload=payload,
+        before=pmax_ready,
+    )
+    assert pmax_plan.after["bidMicros"] == "300000"
+    assert pmax_plan.after["landingPageUrls"] == ["https://example.com/pmax"]
+
+    pmax_no_enabled = _ready_search_before()
+    pmax_no_enabled["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "PERFORMANCE_MAX",
+            "bidding_strategy_type": "MAXIMIZE_CONVERSION_VALUE",
+        }
+    )
+    with pytest.raises(ValidationError, match="enabled asset group"):
+        PlanBuilder().build(
+            "campaign_status",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload=payload,
+            before=pmax_no_enabled,
+        )
+
+    pmax_malformed = _ready_search_before()
+    pmax_malformed["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "PERFORMANCE_MAX",
+            "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
+        }
+    )
+    pmax_malformed["objects"][5]["items"] = [{"campaign": {"id": "1"}}]
+    with pytest.raises(ValidationError, match="Performance Max asset group evidence is malformed"):
+        PlanBuilder().build(
+            "campaign_status",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload=payload,
+            before=pmax_malformed,
+        )
+
+    pmax_duplicate = _ready_search_before()
+    pmax_duplicate["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "PERFORMANCE_MAX",
+            "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
+        }
+    )
+    pmax_duplicate["objects"][5]["items"] = [
+        {
+            "campaign": {"id": "1"},
+            "asset_group": {
+                "id": "51",
+                "status": "ENABLED",
+                "final_urls": ["https://example.com/pmax"],
+            },
+        },
+        {
+            "campaign": {"id": "1"},
+            "asset_group": {
+                "id": "51",
+                "status": "ENABLED",
+                "final_urls": ["https://example.com/pmax"],
+            },
+        },
+    ]
+    with pytest.raises(
+        ValidationError, match="Performance Max asset group evidence contains duplicates"
+    ):
+        PlanBuilder().build(
+            "campaign_status",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload=payload,
+            before=pmax_duplicate,
+        )
+
+    app_ready = _ready_search_before()
+    app_ready["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "MULTI_CHANNEL",
+            "advertising_channel_sub_type": "APP_CAMPAIGN",
+            "bidding_strategy_type": "TARGET_CPA",
+            "target_cpa": {"target_cpa_micros": "150000"},
+            "app_campaign_setting": {
+                "app_id": "com.example.app",
+                "app_store": "APPLE_APP_STORE",
+            },
+        }
+    )
+    app_ready["objects"][4]["items"] = [
+        {
+            "campaign": {"id": "1"},
+            "ad_group": {"id": "10", "status": "ENABLED"},
+            "ad_group_ad": {
+                "status": "PAUSED",
+                "ad": {"id": "29", "type": "APP_AD"},
+                "policy_summary": {
+                    "approval_status": "APPROVED",
+                    "review_status": "REVIEWED",
+                },
+            },
+        },
+        {
+            "campaign": {"id": "1"},
+            "ad_group": {"id": "10", "status": "ENABLED"},
+            "ad_group_ad": {
+                "status": "ENABLED",
+                "ad": {"id": "30", "type": "APP_AD"},
+                "policy_summary": {
+                    "approval_status": "APPROVED_LIMITED",
+                    "review_status": "REVIEW_IN_PROGRESS",
+                },
+            },
+        },
+    ]
+    app_plan = PlanBuilder().build(
+        "campaign_status",
+        profile="operator",
+        customer_id=CUSTOMER,
+        policy_id="policy",
+        payload=payload,
+        before=app_ready,
+    )
+    assert app_plan.after["bidMicros"] == "150000"
+    assert "landingPageUrls" not in app_plan.after
+
+    app_invalid_setting = _ready_search_before()
+    app_invalid_setting["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "MULTI_CHANNEL",
+            "bidding_strategy_type": "TARGET_CPA",
+        }
+    )
+    with pytest.raises(ValidationError, match="APP_CAMPAIGN sub-type"):
+        PlanBuilder().build(
+            "campaign_status",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload=payload,
+            before=app_invalid_setting,
+        )
+
+    app_malformed_ad = _ready_search_before()
+    app_malformed_ad["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "MULTI_CHANNEL",
+            "advertising_channel_sub_type": "APP_CAMPAIGN",
+            "bidding_strategy_type": "TARGET_CPA",
+            "app_campaign_setting": {
+                "app_id": "com.example.app",
+                "app_store": "GOOGLE_APP_STORE",
+            },
+        }
+    )
+    app_malformed_ad["objects"][4]["items"] = [{"campaign": {"id": "1"}}]
+    with pytest.raises(ValidationError, match="App ad evidence is malformed"):
+        PlanBuilder().build(
+            "campaign_status",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload=payload,
+            before=app_malformed_ad,
+        )
+
+    app_duplicate_ad = _ready_search_before()
+    app_duplicate_ad["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "MULTI_CHANNEL",
+            "advertising_channel_sub_type": "APP_CAMPAIGN",
+            "bidding_strategy_type": "TARGET_CPA",
+            "app_campaign_setting": {
+                "app_id": "com.example.app",
+                "app_store": "GOOGLE_APP_STORE",
+            },
+        }
+    )
+    app_ad_row = {
+        "campaign": {"id": "1"},
+        "ad_group": {"id": "10", "status": "ENABLED"},
+        "ad_group_ad": {
+            "status": "ENABLED",
+            "ad": {"id": "30", "type": "APP_AD"},
+            "policy_summary": {
+                "approval_status": "APPROVED",
+                "review_status": "REVIEWED",
+            },
+        },
+    }
+    app_duplicate_ad["objects"][4]["items"] = [app_ad_row, app_ad_row]
+    with pytest.raises(ValidationError, match="App ad evidence contains duplicates"):
+        PlanBuilder().build(
+            "campaign_status",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload=payload,
+            before=app_duplicate_ad,
+        )
+
+    app_disapproved = _ready_search_before()
+    app_disapproved["objects"][0]["items"][0]["campaign"].update(
+        {
+            "advertising_channel_type": "MULTI_CHANNEL",
+            "advertising_channel_sub_type": "APP_CAMPAIGN",
+            "bidding_strategy_type": "TARGET_CPA",
+            "app_campaign_setting": {
+                "app_id": "com.example.app",
+                "app_store": "GOOGLE_APP_STORE",
+            },
+        }
+    )
+    app_disapproved["objects"][4]["items"] = [
+        {
+            "campaign": {"id": "1"},
+            "ad_group": {"id": "10", "status": "ENABLED"},
+            "ad_group_ad": {
+                "status": "ENABLED",
+                "ad": {"id": "30", "type": "APP_AD"},
+                "policy_summary": {
+                    "approval_status": "DISAPPROVED",
+                    "review_status": "REVIEWED",
+                },
+            },
+        }
+    ]
+    with pytest.raises(ValidationError, match="enabled non-disapproved APP_AD"):
+        PlanBuilder().build(
+            "campaign_status",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload=payload,
+            before=app_disapproved,
+        )
+
+    search_auto = _ready_search_before()
+    search_auto["objects"][0]["items"][0]["campaign"].update(
+        {
+            "bidding_strategy_type": "MAXIMIZE_CONVERSION_VALUE",
+            "target_cpa": {"target_cpa_micros": "0"},
+            "maximize_conversions": {"target_cpa_micros": "0"},
+        }
+    )
+    search_auto_plan = PlanBuilder().build(
+        "campaign_status",
+        profile="operator",
+        customer_id=CUSTOMER,
+        policy_id="policy",
+        payload=payload,
+        before=search_auto,
+    )
+    assert "bidMicros" not in search_auto_plan.after
+    assert _extract_campaign_bid_micros({}) is None
 
 
 def test_search_enable_uses_highest_effective_keyword_bid() -> None:
@@ -891,6 +1270,11 @@ def test_search_enable_uses_highest_effective_keyword_bid() -> None:
     [
         ("MANUAL_CPC", {"enhancedCpcEnabled": False}, "manual_cpc"),
         ("TARGET_CPA", {"targetCpaMicros": "100"}, "target_cpa"),
+        ("MAXIMIZE_CONVERSIONS", {}, "maximize_conversions"),
+        ("MAXIMIZE_CONVERSIONS", {"targetCpaMicros": "100"}, "maximize_conversions"),
+        ("MAXIMIZE_CONVERSION_VALUE", {}, "maximize_conversion_value"),
+        ("MAXIMIZE_CONVERSION_VALUE", {"targetRoas": 2.5}, "maximize_conversion_value"),
+        ("TARGET_ROAS", {"targetRoas": 3.0}, "target_roas"),
     ],
 )
 def test_campaign_bidding_variants(strategy: str, extra: dict[str, Any], field: str) -> None:
@@ -901,28 +1285,12 @@ def test_campaign_bidding_variants(strategy: str, extra: dict[str, Any], field: 
         customer_id=CUSTOMER,
         policy_id="policy",
         payload=payload,
-        before=_campaign_bidding_before(),
+        before=_campaign_bidding_before(status="ENABLED"),
     )
     assert field in plan.items[0].resource
 
 
-@pytest.mark.parametrize(
-    "strategy",
-    ["MAXIMIZE_CONVERSIONS", "MAXIMIZE_CONVERSION_VALUE", "TARGET_ROAS"],
-)
-def test_campaign_bidding_without_matching_policy_limit_is_not_supported(strategy: str) -> None:
-    with pytest.raises(NotSupportedError, match="monetary limit"):
-        PlanBuilder().build(
-            "campaign_bidding",
-            profile="operator",
-            customer_id=CUSTOMER,
-            policy_id="policy",
-            payload={"campaignId": "1", "strategy": strategy, "targetRoas": 1.5},
-            before=_campaign_bidding_before(),
-        )
-
-
-def test_campaign_bidding_rejects_enhanced_cpc_and_active_campaign() -> None:
+def test_campaign_bidding_rejects_enhanced_cpc_invalid_roas_and_removed_campaign() -> None:
     with pytest.raises(ValidationError, match="Enhanced CPC"):
         PlanBuilder().build(
             "campaign_bidding",
@@ -936,14 +1304,144 @@ def test_campaign_bidding_rejects_enhanced_cpc_and_active_campaign() -> None:
             },
             before=_campaign_bidding_before(),
         )
-    with pytest.raises(ValidationError, match="PAUSED"):
+    for bad_roas in (True, "bad", 0, -1, 1000.1, float("inf")):
+        with pytest.raises(ValidationError, match="positive number"):
+            _roas(bad_roas, field="targetRoas")
+    with pytest.raises(ValidationError, match="resolve exactly once"):
         PlanBuilder().build(
             "campaign_bidding",
             profile="operator",
             customer_id=CUSTOMER,
             policy_id="policy",
             payload={"campaignId": "1", "strategy": "MANUAL_CPC"},
-            before=_campaign_bidding_before(status="ENABLED"),
+            before=_campaign_bidding_before(status="REMOVED"),
+        )
+
+
+def test_ad_update_plan_and_validation_branches() -> None:
+    with pytest.raises(ValidationError, match="Ad state must resolve"):
+        _ad_state({"objects": [{"items": []}]}, "1", "2")
+    with pytest.raises(ValidationError, match="Ad state must resolve"):
+        _ad_state(_ad_update_before(ad_type="OTHER"), "1", "2")
+
+    rsa_status_only = PlanBuilder().build(
+        "ad_update",
+        profile="operator",
+        customer_id=CUSTOMER,
+        policy_id="policy",
+        payload={"adGroupId": "1", "adId": "2", "status": "ENABLED"},
+        before=_ad_update_before(),
+    )
+    assert [item.operation_type for item in rsa_status_only.items] == ["ad_group_ad_operation"]
+
+    rsa_creative_only = PlanBuilder().build(
+        "ad_update",
+        profile="operator",
+        customer_id=CUSTOMER,
+        policy_id="policy",
+        payload={
+            "adGroupId": "1",
+            "adId": "2",
+            "finalUrl": "https://example.com/new",
+            "headlines": ["One", "Two", "Three"],
+            "descriptions": ["Description one", "Description two"],
+        },
+        before=_ad_update_before(),
+    )
+    assert [item.operation_type for item in rsa_creative_only.items] == ["ad_operation"]
+
+    with pytest.raises(ValidationError, match="only supported for APP_AD"):
+        PlanBuilder().build(
+            "ad_update",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload={"adGroupId": "1", "adId": "2", "imageAssets": [ASSET]},
+            before=_ad_update_before(),
+        )
+    with pytest.raises(ValidationError, match="status must be ENABLED or PAUSED"):
+        PlanBuilder().build(
+            "ad_update",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload={"adGroupId": "1", "adId": "2", "status": "REMOVED"},
+            before=_ad_update_before(),
+        )
+    with pytest.raises(ValidationError, match="at least one changed field"):
+        PlanBuilder().build(
+            "ad_update",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload={"adGroupId": "1", "adId": "2"},
+            before=_ad_update_before(),
+        )
+
+    app_status_only = PlanBuilder().build(
+        "ad_update",
+        profile="operator",
+        customer_id=CUSTOMER,
+        policy_id="policy",
+        payload={"adGroupId": "1", "adId": "2", "status": "ENABLED"},
+        before=_ad_update_before(ad_type="APP_AD"),
+    )
+    assert [item.operation_type for item in app_status_only.items] == ["ad_group_ad_operation"]
+    with pytest.raises(ValidationError, match="APP_AD status cannot be PAUSED"):
+        PlanBuilder().build(
+            "ad_update",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload={"adGroupId": "1", "adId": "2", "status": "PAUSED"},
+            before=_ad_update_before(ad_type="APP_AD"),
+        )
+
+    app_creative = PlanBuilder().build(
+        "ad_update",
+        profile="operator",
+        customer_id=CUSTOMER,
+        policy_id="policy",
+        payload={
+            "adGroupId": "1",
+            "adId": "2",
+            "headlines": ["One", "Two"],
+            "descriptions": ["Description one"],
+            "imageAssets": [ASSET],
+            "youtubeVideoAssets": [ASSET],
+        },
+        before=_ad_update_before(ad_type="APP_AD"),
+    )
+    assert [item.operation_type for item in app_creative.items] == ["ad_operation"]
+    assert app_creative.after["imageAssets"] == [ASSET]
+    assert app_creative.after["youtubeVideoAssets"] == [ASSET]
+
+    with pytest.raises(ValidationError, match="only supported for RESPONSIVE_SEARCH_AD"):
+        PlanBuilder().build(
+            "ad_update",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload={"adGroupId": "1", "adId": "2", "finalUrl": "https://example.com"},
+            before=_ad_update_before(ad_type="APP_AD"),
+        )
+    with pytest.raises(ValidationError, match="imageAssets must contain at most 20"):
+        PlanBuilder().build(
+            "ad_update",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload={"adGroupId": "1", "adId": "2", "imageAssets": "invalid"},
+            before=_ad_update_before(ad_type="APP_AD"),
+        )
+    with pytest.raises(ValidationError, match="youtubeVideoAssets must contain at most 20"):
+        PlanBuilder().build(
+            "ad_update",
+            profile="operator",
+            customer_id=CUSTOMER,
+            policy_id="policy",
+            payload={"adGroupId": "1", "adId": "2", "youtubeVideoAssets": "invalid"},
+            before=_ad_update_before(ad_type="APP_AD"),
         )
 
 
@@ -1122,9 +1620,7 @@ def test_child_budget_is_scoped_to_exact_parent_and_only_required_for_spend() ->
                             "ad_group": {"id": "1"},
                             "campaign": {
                                 "id": "2",
-                                "campaign_budget": (
-                                    f"customers/{CUSTOMER}/campaignBudgets/20"
-                                ),
+                                "campaign_budget": (f"customers/{CUSTOMER}/campaignBudgets/20"),
                             },
                         },
                         {
@@ -1401,6 +1897,8 @@ def test_remaining_typed_variants() -> None:
             },
         ),
     ]
+    app_ad_create_before = _criterion_update_before()
+    app_ad_create_before["objects"][0]["items"] = []
     for kind, payload in cases:
         plan = builder.build(
             cast(WriteKind, kind),
@@ -1411,6 +1909,8 @@ def test_remaining_typed_variants() -> None:
             before=(
                 _criterion_update_before()
                 if kind == "criterion_update"
+                else app_ad_create_before
+                if kind == "ad_create"
                 else {"objects": []}
             ),
         )
@@ -1491,11 +1991,7 @@ def test_recommendation_resource_name_accepts_composite_id() -> None:
         profile="operator",
         customer_id=CUSTOMER,
         policy_id="policy",
-        payload={
-            "recommendationResourceName": (
-                f"customers/{CUSTOMER}/recommendations/abc~123"
-            )
-        },
+        payload={"recommendationResourceName": (f"customers/{CUSTOMER}/recommendations/abc~123")},
         before={"objects": []},
     )
     assert plan.after["recommendationResourceName"].endswith("/abc~123")

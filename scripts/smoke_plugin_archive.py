@@ -64,28 +64,50 @@ def smoke(archive_path: Path) -> None:
         )
         environment = {key: os.environ[key] for key in _SAFE_ENVIRONMENT_KEYS if key in os.environ}
         environment["GOOGLE_ADS_MCP_CONFIG"] = str(config)
-        completed = subprocess.run(
+        process = subprocess.Popen(
             [str(launcher)],
-            input="\n".join(json.dumps(message) for message in messages) + "\n",
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            capture_output=True,
             env=environment,
-            timeout=60,
-            check=True,
         )
+        assert process.stdin is not None
+        assert process.stdout is not None
+        assert process.stderr is not None
+        responses: list[dict[str, Any]] = []
         try:
-            responses = [
-                cast(dict[str, Any], json.loads(line))
-                for line in completed.stdout.splitlines()
-                if line
-            ]
-        except json.JSONDecodeError as exc:
-            raise SystemExit("Plugin stdout contained non-JSON content") from exc
+            process.stdin.write("\n".join(json.dumps(message) for message in messages) + "\n")
+            process.stdin.flush()
+            for raw_line in process.stdout:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    parsed = cast(dict[str, Any], json.loads(line))
+                except json.JSONDecodeError as exc:
+                    raise SystemExit("Plugin stdout contained non-JSON content") from exc
+                responses.append(parsed)
+                if {1, 2} <= {item.get("id") for item in responses}:
+                    break
+        finally:
+            process.stdin.close()
+            process.stdin = None
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                process.wait(timeout=5)
         result = next(
-            cast(dict[str, Any], response["result"])
-            for response in responses
-            if response.get("id") == 2
+            (
+                cast(dict[str, Any], response["result"])
+                for response in responses
+                if response.get("id") == 2
+            ),
+            None,
         )
+        if result is None:
+            raise SystemExit("Plugin archive exited before returning tools/list response")
         tools = cast(list[dict[str, Any]], result["tools"])
         expected = json.loads(
             (plugin_root / "api-contract" / "tools-v0.2.json").read_text(encoding="utf-8")

@@ -7,6 +7,7 @@
     "ad_create_preview",
     "ad_group_create_preview",
     "ad_group_update_preview",
+    "ad_update_preview",
     "app_campaign_create_preview",
     "asset_create_preview",
     "asset_group_create_preview",

@@ -17,6 +17,7 @@ ALLOWED_OPERATION_TYPES = {
     "ad_group_asset_operation",
     "ad_group_criterion_operation",
     "ad_group_operation",
+    "ad_operation",
     "asset_group_asset_operation",
     "asset_group_operation",
     "asset_operation",
@@ -139,8 +140,7 @@ def validate() -> None:
         violations.append(f"write operation allowlist mismatch: {sorted(operation_types)}")
     if forbidden_write_services != REQUIRED_FORBIDDEN_WRITE_SERVICES:
         violations.append(
-            "forbidden write service list mismatch: "
-            f"{sorted(forbidden_write_services)}"
+            f"forbidden write service list mismatch: {sorted(forbidden_write_services)}"
         )
     if violations:
         raise SystemExit("\n".join(violations))

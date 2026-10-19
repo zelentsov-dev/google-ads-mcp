@@ -22,7 +22,7 @@ SELECT_FIELDS = re.compile(r"^SELECT\s+(.+?)\s+FROM\s+", re.IGNORECASE | re.DOTA
 
 def write_query_shapes(customer_id: str) -> set[str]:
     asset = f"customers/{customer_id}/assets/1"
-    recommendation = f"customers/{customer_id}/recommendations/1"
+    recommendation = f"customers/{customer_id}/recommendations/{'0' * 40}"
     payloads: dict[str, dict[str, Any]] = {
         "search_campaign_create": {"name": "Static Search"},
         "performance_max_campaign_create": {"name": "Static PMax"},
@@ -61,6 +61,7 @@ def write_query_shapes(customer_id: str) -> set[str]:
         },
         "asset_group_create": {"campaignId": "1", "name": "Static Asset Group"},
         "ad_create": {"adGroupId": "1", "name": "Static Ad"},
+        "ad_update": {"adGroupId": "1", "adId": "2"},
         "recommendation_apply": {"recommendationResourceName": recommendation},
         "recommendation_dismiss": {"recommendationResourceName": recommendation},
     }

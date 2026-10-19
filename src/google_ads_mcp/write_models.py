@@ -21,6 +21,7 @@ WriteKind = Literal[
     "asset_link",
     "asset_group_create",
     "ad_create",
+    "ad_update",
     "recommendation_apply",
     "recommendation_dismiss",
 ]
@@ -39,7 +40,7 @@ OperationState = Literal[
 @dataclass(frozen=True, slots=True)
 class MutationItem:
     operation_type: str
-    action: Literal["create", "update"]
+    action: Literal["create", "update", "remove"]
     resource: dict[str, Any]
     update_mask: tuple[str, ...] = ()
     correlation_id: str = "item-1"
@@ -57,7 +58,7 @@ class MutationItem:
     def from_dict(cls, value: dict[str, Any]) -> MutationItem:
         return cls(
             operation_type=str(value["operationType"]),
-            action=cast(Literal["create", "update"], str(value["action"])),
+            action=cast(Literal["create", "update", "remove"], str(value["action"])),
             resource=dict(value["resource"]),
             update_mask=tuple(str(item) for item in value.get("updateMask", ())),
             correlation_id=str(value.get("correlationId", "item-1")),

@@ -717,7 +717,7 @@
     },
     {
       "name": "ad_create_preview",
-      "description": "Validate and preview one paused responsive Search or App ad.",
+      "description": "Validate and preview one responsive Search (PAUSED) or App (ENABLED) ad.",
       "inputProperties": [
         "adGroupId",
         "adType",
@@ -740,6 +740,30 @@
         "adType",
         "headlines",
         "descriptions"
+      ]
+    },
+    {
+      "name": "ad_update_preview",
+      "description": "Validate and preview status or creative updates for one responsive Search or App ad.",
+      "inputProperties": [
+        "adGroupId",
+        "adId",
+        "customerId",
+        "descriptions",
+        "finalUrl",
+        "headlines",
+        "imageAssets",
+        "policyId",
+        "profile",
+        "status",
+        "youtubeVideoAssets"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "adGroupId",
+        "adId"
       ]
     },
     {

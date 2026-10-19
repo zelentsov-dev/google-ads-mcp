@@ -59,6 +59,7 @@ _DIRECT_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
             "campaign.final_url_suffix",
             "campaign.geo_target_type_setting.positive_geo_target_type",
             "campaign.geo_target_type_setting.negative_geo_target_type",
+            "campaign.brand_guidelines_enabled",
             "campaign.contains_eu_political_advertising",
             "campaign.bidding_strategy_type",
             "campaign.network_settings.target_google_search",
@@ -71,6 +72,8 @@ _DIRECT_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
             "campaign.manual_cpc.enhanced_cpc_enabled",
             "campaign.target_cpa.target_cpa_micros",
             "campaign.target_roas.target_roas",
+            "campaign.maximize_conversions.target_cpa_micros",
+            "campaign.maximize_conversion_value.target_roas",
         ),
     ),
     "ad_group_operation": (
@@ -167,6 +170,21 @@ _DIRECT_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
             "ad_group_ad.resource_name",
             "ad_group_ad.ad_group",
             "ad_group_ad.status",
+            "ad_group_ad.ad.name",
+            "ad_group_ad.ad.type",
+            "ad_group_ad.ad.final_urls",
+            "ad_group_ad.ad.responsive_search_ad.headlines",
+            "ad_group_ad.ad.responsive_search_ad.descriptions",
+            "ad_group_ad.ad.app_ad.headlines",
+            "ad_group_ad.ad.app_ad.descriptions",
+            "ad_group_ad.ad.app_ad.images",
+            "ad_group_ad.ad.app_ad.youtube_videos",
+        ),
+    ),
+    "ad_operation": (
+        "ad_group_ad",
+        (
+            "ad_group_ad.ad.resource_name",
             "ad_group_ad.ad.name",
             "ad_group_ad.ad.type",
             "ad_group_ad.ad.final_urls",
@@ -278,9 +296,7 @@ class OperatorService:
         return {"objects": objects}
 
     @staticmethod
-    def _aggregate_budget(
-        before: dict[str, Any], *, object_index: int, customer_id: str
-    ) -> int:
+    def _aggregate_budget(before: dict[str, Any], *, object_index: int, customer_id: str) -> int:
         objects = before.get("objects")
         if not isinstance(objects, list) or object_index >= len(objects):
             raise BlockedError(
@@ -343,10 +359,7 @@ class OperatorService:
                 "The campaign is outside the write policy allowlist",
                 code="policy_campaign_scope_mismatch",
             )
-        if (
-            plan.kind == "campaign_status"
-            and plan.after.get("status") == "ENABLED"
-        ):
+        if plan.kind == "campaign_status" and plan.after.get("status") == "ENABLED":
             if not policy.allow_campaign_enable:
                 raise BlockedError(
                     "The policy does not permit enabling campaigns",
@@ -581,7 +594,7 @@ class OperatorService:
         objects: list[dict[str, Any]] = []
         for item in record.plan.items:
             name = resource_names.get(item.correlation_id)
-            if name is None and item.action == "update":
+            if name is None and item.action in {"update", "remove"}:
                 candidate = item.resource.get("resource_name")
                 if isinstance(candidate, str) and not candidate.rsplit("/", 1)[-1].startswith("-"):
                     name = candidate
@@ -612,14 +625,24 @@ class OperatorService:
             current_item = (
                 result.items[0] if len(result.items) == 1 and not result.truncated else None
             )
-            is_match = current_item is not None and _matches_expected(
-                current_item,
-                expected=mutation.resource,
-                operation_type=mutation.operation_type,
-                action=mutation.action,
-                update_mask=mutation.update_mask,
-                temporary_names=temporary_names,
-            )
+            if mutation.action == "remove":
+                root_key = _DIRECT_FIELDS[mutation.operation_type][0]
+                is_match = not result.truncated and (
+                    len(result.items) == 0
+                    or (
+                        current_item is not None
+                        and current_item.get(root_key, {}).get("status") == "REMOVED"
+                    )
+                )
+            else:
+                is_match = current_item is not None and _matches_expected(
+                    current_item,
+                    expected=mutation.resource,
+                    operation_type=mutation.operation_type,
+                    action=mutation.action,
+                    update_mask=mutation.update_mask,
+                    temporary_names=temporary_names,
+                )
             matched += int(is_match)
             objects.append(
                 {
@@ -772,10 +795,12 @@ def _direct_query(operation_type: str, resource_name: str | None) -> str | None:
         return None
     escaped = resource_name.replace("\\", "\\\\").replace("'", "\\'")
     resource, fields = definition
-    return (
-        f"SELECT {', '.join(fields)} FROM {resource} "
-        f"WHERE {resource}.resource_name = '{escaped}' LIMIT 1"
+    where_field = (
+        "ad_group_ad.ad.resource_name"
+        if operation_type == "ad_operation"
+        else f"{resource}.resource_name"
     )
+    return f"SELECT {', '.join(fields)} FROM {resource} WHERE {where_field} = '{escaped}' LIMIT 1"
 
 
 def _matches_expected(
@@ -791,6 +816,8 @@ def _matches_expected(
     if definition is None:
         return False
     root = current.get(definition[0])
+    if operation_type == "ad_operation" and isinstance(root, dict):
+        root = root.get("ad")
     if not isinstance(root, dict):
         return False
     strategy_fields = {
@@ -836,12 +863,15 @@ def _matches_expected(
                     return False
             return True
         if isinstance(expected_value, list):
-            if not isinstance(current_value, list) or len(expected_value) != len(current_value):
+            current_list = [] if current_value is None else current_value
+            if not isinstance(current_list, list) or len(expected_value) != len(current_list):
                 return False
             return all(
                 compare(expected_item, current_item)
-                for expected_item, current_item in zip(expected_value, current_value, strict=True)
+                for expected_item, current_item in zip(expected_value, current_list, strict=True)
             )
+        if not isinstance(expected_value, bool) and expected_value in (0, 0.0):
+            return current_value in (None, 0, 0.0, "0", "0.0")
         resolved = (
             temporary_names.get(expected_value, expected_value)
             if temporary_names is not None and isinstance(expected_value, str)
