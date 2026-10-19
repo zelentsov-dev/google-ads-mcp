@@ -83,13 +83,16 @@ def test_artifact_scan_accepts_directory_inputs_and_rejects_empty_directories(
     )
     assert empty.returncode != 0
     (artifacts / "safe.txt").write_text("safe artifact")
+    (artifacts / "sbom.spdx.json").write_text(
+        '{"SPDXID":"SPDXRef-Package-python-google-ads-operator-mcp-35531a595c03a159"}'
+    )
     valid = subprocess.run(
         [sys.executable, "scripts/scan_artifacts.py", str(artifacts)],
         capture_output=True,
         text=True,
     )
     assert valid.returncode == 0
-    assert "1 files" in valid.stdout
+    assert "2 files" in valid.stdout
 
 
 def test_manifest_validator() -> None:
@@ -102,7 +105,7 @@ def test_manifest_validator() -> None:
 
 
 def test_release_version_gate(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GITHUB_REF_NAME", "v0.2.0")
+    monkeypatch.setenv("GITHUB_REF_NAME", "v0.2.1")
     valid = subprocess.run(
         [sys.executable, "scripts/verify_release_version.py"],
         env=os.environ.copy(),

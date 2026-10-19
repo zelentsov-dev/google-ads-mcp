@@ -1,6 +1,6 @@
 {
   "name": "google-ads-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Security-first Google Ads analysis and typed safe operations through MCP.",
   "author": {
     "name": "zelentsov-dev",

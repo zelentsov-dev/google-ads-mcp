@@ -102,7 +102,7 @@ def _run_stdio_until(
 
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     main(["version"])
-    assert "0.2.0" in capsys.readouterr().out
+    assert "0.2.1" in capsys.readouterr().out
 
 
 def test_cli_config_init_validate(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

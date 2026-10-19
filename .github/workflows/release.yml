@@ -67,12 +67,12 @@ jobs:
       - run: uv run --frozen python scripts/scan_artifacts.py dist/*
       - run: uv run --frozen python scripts/generate_checksums.py dist
       - run: python -m venv /tmp/google-ads-mcp-wheel-smoke
-      - run: /tmp/google-ads-mcp-wheel-smoke/bin/pip install dist/google_ads_operator_mcp-0.2.0-py3-none-any.whl
+      - run: /tmp/google-ads-mcp-wheel-smoke/bin/pip install dist/google_ads_operator_mcp-${GITHUB_REF_NAME#v}-py3-none-any.whl
       - run: /tmp/google-ads-mcp-wheel-smoke/bin/google-ads-mcp version
       - run: python -m venv /tmp/google-ads-mcp-sdist-smoke
-      - run: /tmp/google-ads-mcp-sdist-smoke/bin/pip install dist/google_ads_operator_mcp-0.2.0.tar.gz
+      - run: /tmp/google-ads-mcp-sdist-smoke/bin/pip install dist/google_ads_operator_mcp-${GITHUB_REF_NAME#v}.tar.gz
       - run: /tmp/google-ads-mcp-sdist-smoke/bin/google-ads-mcp version
-      - run: uv run --frozen python scripts/smoke_plugin_archive.py dist/google-ads-mcp-plugin-0.2.0.zip
+      - run: uv run --frozen python scripts/smoke_plugin_archive.py dist/google-ads-mcp-plugin-${GITHUB_REF_NAME#v}.zip
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: release-dist

@@ -1,6 +1,6 @@
 # Google Ads MCP
 
-Google Ads MCP is a local, security-first MCP server and Codex plugin for Google Ads API v25. Version `0.2.0` keeps the original 13 read tools, adds nine typed analytics tools, and introduces policy-gated write previews with one signed apply interface and durable readback verification.
+Google Ads MCP is a local, security-first MCP server and Codex plugin for Google Ads API v25. Version `0.2.1` keeps the original 13 read tools, adds nine typed analytics tools, and introduces policy-gated write previews with one signed apply interface and durable readback verification.
 
 The public Python distribution is named `google-ads-operator-mcp`. The product and command remain `Google Ads MCP` and `google-ads-mcp`.
 
@@ -90,7 +90,7 @@ provide hosted OAuth, billing management, user management, or unrestricted
 access to Google Ads mutation services.
 ```
 
-Version `0.2.0` supports the typed, policy-gated operations documented below. It does not yet include an autonomous optimizer or scheduler; those clauses remain roadmap statements and must be identified as such if Google asks what is live today.
+Version `0.2.1` supports the typed, policy-gated operations documented below. It does not yet include an autonomous optimizer or scheduler; those clauses remain roadmap statements and must be identified as such if Google asks what is live today.
 
 Developer-token access can be Test Account, Explorer, Basic, or Standard depending on Google's current review outcome. Test Account access works only with test accounts. Explorer access is production-capable but restricted. Basic access is the normal production tier with a documented daily operation limit. Re-check the current [access-level rules](https://developers.google.com/google-ads/api/docs/api-policy/access-levels) before production acceptance.
 
@@ -133,7 +133,7 @@ Use Google's [test-account flow](https://developers.google.com/google-ads/api/do
 
 Production and test hierarchies cannot be linked. Test accounts do not serve ads, have no billing, and normally return empty impressions, cost, and conversion metrics. They cannot prove optimizer quality. Use a dedicated test credential with no production access for mutation acceptance.
 
-### 8. Install v0.2.0
+### 8. Install v0.2.1
 
 For a source checkout:
 
@@ -145,7 +145,7 @@ uv run --frozen google-ads-mcp version
 After the public release, install the standalone CLI with:
 
 ```bash
-uv tool install google-ads-operator-mcp==0.2.0
+uv tool install google-ads-operator-mcp==0.2.1
 google-ads-mcp version
 ```
 
@@ -282,7 +282,7 @@ Use campaigns_query and campaign_inventory without changing anything.
 Use reports_catalog, then run one bounded report with an explicit completed date range.
 Use resource_metadata for campaign.start_date_time and campaign.end_date_time.
 Use change_events_query and confirm no change is attributable to this MCP session.
-Use server_info and confirm v0.2.0, 22 read/analytics tools, ten-minute receipts, and runtime write opt-in.
+Use server_info and confirm v0.2.1, 22 read/analytics tools, ten-minute receipts, and runtime write opt-in.
 List the Google Ads MCP tools and confirm there are exactly 46. Confirm no tool accepts a raw protobuf, mutate payload, Google service name, billing/user operation, upload, delete, or scheduler request.
 ```
 
@@ -445,7 +445,7 @@ google-ads-mcp serve --stdio [--allow-writes]
 
 ## MCP tools
 
-The fixed v0.2.0 surface contains 46 tools:
+The fixed v0.2.1 surface contains 46 tools:
 
 ```text
 # Original 13 reads
