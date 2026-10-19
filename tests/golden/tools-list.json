@@ -717,7 +717,7 @@
     },
     {
       "name": "ad_create_preview",
-      "description": "Validate and preview one paused responsive Search or App ad.",
+      "description": "Validate and preview one responsive Search (PAUSED) or App (ENABLED) ad.",
       "inputProperties": [
         "adGroupId",
         "adType",

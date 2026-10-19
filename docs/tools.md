@@ -20,7 +20,7 @@ Every response includes `status`, `context`, `evidence`, `items`, and `truncated
 
 ## Reports
 
-`reports_catalog` is the source of allowed report names and segments (14 templates, including `asset_performance`, `app_asset_performance`, `pmax_asset_performance`, and `geographic_performance`). `report_run` accepts only a catalog name, ISO `dateFrom` and `dateTo`, optional numeric campaign IDs, optional catalog-approved segments, and a bound cursor. The maximum range is 366 inclusive days.
+`reports_catalog` is the source of allowed report names and segments (21 templates, including `asset_performance`, `app_asset_performance`, `pmax_asset_performance`, and `geographic_performance`). `report_run` accepts only a catalog name, ISO `dateFrom` and `dateTo`, optional numeric campaign IDs, optional catalog-approved segments, and a bound cursor. The maximum range is 366 inclusive days.
 
 Generic reports work across campaign types. Specialized reports are available for Search, Shopping, App, Performance Max, Display, Demand Gen, Video, Hotel/Travel, Local Services/Local, and Smart where the pinned API exposes compatible resources. `asset_performance_report` automatically falls back from `campaign_asset` to `ad_group_ad_asset_view` and `asset_group_asset` when `campaign_asset` is empty. An API gap returns `not_supported`, never a false successful empty result.
 

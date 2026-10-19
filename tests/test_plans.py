@@ -1897,6 +1897,8 @@ def test_remaining_typed_variants() -> None:
             },
         ),
     ]
+    app_ad_create_before = _criterion_update_before()
+    app_ad_create_before["objects"][0]["items"] = []
     for kind, payload in cases:
         plan = builder.build(
             cast(WriteKind, kind),
@@ -1904,7 +1906,13 @@ def test_remaining_typed_variants() -> None:
             customer_id=CUSTOMER,
             policy_id="policy",
             payload=payload,
-            before=(_criterion_update_before() if kind == "criterion_update" else {"objects": []}),
+            before=(
+                _criterion_update_before()
+                if kind == "criterion_update"
+                else app_ad_create_before
+                if kind == "ad_create"
+                else {"objects": []}
+            ),
         )
         assert plan.items
 

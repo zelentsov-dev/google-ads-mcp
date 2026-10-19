@@ -1788,39 +1788,140 @@ def test_direct_query_customer_id_and_exact_comparator_branches() -> None:
         action="update",
         update_mask=("final_urls",),
     )
+    assert _matches_expected(
+        {
+            "ad_group_ad": {
+                "ad": {
+                    "resource_name": "customers/1234567890/ads/3",
+                    "app_ad": {
+                        "headlines": [{"text": "One"}, {"text": "Two"}],
+                        "descriptions": [{"text": "Desc"}],
+                        "images": [{"asset": "customers/1234567890/assets/1"}],
+                        "youtube_videos": None,
+                    },
+                }
+            }
+        },
+        {
+            "app_ad": {
+                "headlines": [{"text": "One"}, {"text": "Two"}],
+                "descriptions": [{"text": "Desc"}],
+                "images": [{"asset": "customers/1234567890/assets/1"}],
+                "youtube_videos": [],
+            }
+        },
+        operation_type="ad_operation",
+        action="update",
+        update_mask=(
+            "app_ad.headlines",
+            "app_ad.descriptions",
+            "app_ad.images",
+            "app_ad.youtube_videos",
+        ),
+    )
+    assert _matches_expected(
+        {
+            "campaign": {
+                "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
+                "maximize_conversions": {"target_cpa_micros": None},
+            }
+        },
+        {"maximize_conversions": {"target_cpa_micros": 0}},
+        operation_type="campaign_operation",
+        action="update",
+        update_mask=("maximize_conversions.target_cpa_micros",),
+    )
+    assert not _matches_expected(
+        {
+            "campaign": {
+                "bidding_strategy_type": "MAXIMIZE_CONVERSIONS",
+                "maximize_conversions": {"target_cpa_micros": "500000"},
+            }
+        },
+        {"maximize_conversions": {"target_cpa_micros": 0}},
+        operation_type="campaign_operation",
+        action="update",
+        update_mask=("maximize_conversions.target_cpa_micros",),
+    )
+    assert _matches_expected(
+        {
+            "campaign": {
+                "bidding_strategy_type": "MAXIMIZE_CONVERSION_VALUE",
+                "maximize_conversion_value": {"target_roas": "0.0"},
+            }
+        },
+        {"maximize_conversion_value": {"target_roas": 0.0}},
+        operation_type="campaign_operation",
+        action="update",
+        update_mask=("maximize_conversion_value.target_roas",),
+    )
+    assert not _matches_expected(
+        {
+            "campaign": {
+                "bidding_strategy_type": "MAXIMIZE_CONVERSION_VALUE",
+                "maximize_conversion_value": {"target_roas": "1.5"},
+            }
+        },
+        {"maximize_conversion_value": {"target_roas": 0.0}},
+        operation_type="campaign_operation",
+        action="update",
+        update_mask=("maximize_conversion_value.target_roas",),
+    )
 
 
 def test_readback_handles_criterion_remove_mutation(tmp_path: Path) -> None:
     operator, read, _, journal, _ = _operator(tmp_path)
     preview = _preview(operator)
     stored = journal.inspect(preview["operation"]["operationId"])
+    target_resource = "customers/1234567890/campaignCriteria/1~2840"
     plan = replace(
         stored.plan,
         items=(
             MutationItem(
                 "campaign_criterion_operation",
                 "remove",
-                {"resource_name": "customers/1234567890/campaignCriteria/1~9999"},
+                {"resource_name": target_resource},
                 correlation_id="remove-criterion-1",
             ),
         ),
     )
     record = replace(stored, plan=plan)
-    readback = asyncio.run(
-        operator._readback(
-            operator._profile("operator"),
-            record,
-            ApplyResult(
-                state="applied",
-                items=(
-                    ApplyItemResult(
-                        correlation_id="remove-criterion-1",
-                        status="applied",
-                        resource_name="customers/1234567890/campaignCriteria/1~9999",
-                    ),
-                ),
+    apply_result = ApplyResult(
+        state="applied",
+        items=(
+            ApplyItemResult(
+                correlation_id="remove-criterion-1",
+                status="applied",
+                resource_name=target_resource,
             ),
-        )
+        ),
     )
-    assert readback.state == "matched_before"
+    readback_unmatched = asyncio.run(
+        operator._readback(operator._profile("operator"), record, apply_result)
+    )
+    assert readback_unmatched.state == "matched_before"
+
+    async def _empty_search(profile: Any, customer_id: str, query: str) -> AdapterSearchResult:
+        read.queries.append(query)
+        return AdapterSearchResult((), 0, False)
+
+    read.search = _empty_search  # type: ignore[method-assign]
+    readback_empty = asyncio.run(
+        operator._readback(operator._profile("operator"), record, apply_result)
+    )
+    assert readback_empty.state == "matched_after"
+
+    async def _removed_search(profile: Any, customer_id: str, query: str) -> AdapterSearchResult:
+        read.queries.append(query)
+        return AdapterSearchResult(
+            ({"campaign_criterion": {"resource_name": target_resource, "status": "REMOVED"}},),
+            1,
+            False,
+        )
+
+    read.search = _removed_search  # type: ignore[method-assign]
+    readback_removed = asyncio.run(
+        operator._readback(operator._profile("operator"), record, apply_result)
+    )
+    assert readback_removed.state == "matched_after"
     assert read.queries

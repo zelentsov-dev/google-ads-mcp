@@ -1043,7 +1043,7 @@ def create_mcp(
         imageAssets: list[str] | None = None,
         youtubeVideoAssets: list[str] | None = None,
     ) -> ToolResponse:
-        """Validate and preview one paused responsive Search or App ad."""
+        """Validate and preview one responsive Search (PAUSED) or App (ENABLED) ad."""
         payload = {
             "adGroupId": adGroupId,
             "name": name,

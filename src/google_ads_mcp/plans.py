@@ -407,6 +407,7 @@ def state_queries(
                 f"AND ad_group_ad.ad.name = '{name}' "
                 "AND ad_group_ad.status != 'REMOVED' LIMIT 2",
             ),
+            _parent_campaign_budget_query("ad_group", ad_group_id),
         )
     if kind == "ad_update":
         ad_group_id = _id(payload.get("adGroupId"), field="adGroupId")
@@ -1791,6 +1792,16 @@ class PlanBuilder:
         else:
             raise ValidationError("adType must be RESPONSIVE_SEARCH_AD or APP_AD")
         ad_status = "ENABLED" if ad_type == "APP_AD" else "PAUSED"
+        after: dict[str, Any] = {
+            "adGroupId": ad_group_id,
+            "name": name,
+            "adType": ad_type,
+            "status": ad_status,
+        }
+        spend_affecting = ad_status == "ENABLED"
+        if spend_affecting:
+            _require_paused_parent(before, "ad_group", ad_group_id)
+            _set_parent_campaign_budget(after, before, "ad_group", ad_group_id)
         return self._plan(
             profile=profile,
             customer_id=customer_id,
@@ -1798,7 +1809,7 @@ class PlanBuilder:
             kind="ad_create",
             related_key=f"ad-group:{ad_group_id}:ad-name:{name.casefold()}",
             before=before,
-            after={"adGroupId": ad_group_id, "name": name, "adType": ad_type, "status": ad_status},
+            after=after,
             items=[
                 MutationItem(
                     "ad_group_ad_operation",
@@ -1814,6 +1825,7 @@ class PlanBuilder:
             readback_queries=tuple(
                 query for _, query in state_queries("ad_create", customer_id, payload)
             ),
+            spend_affecting=spend_affecting,
         )
 
     def _build_ad_update(self, **values: Any) -> WritePlan:

@@ -59,6 +59,7 @@ _DIRECT_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
             "campaign.final_url_suffix",
             "campaign.geo_target_type_setting.positive_geo_target_type",
             "campaign.geo_target_type_setting.negative_geo_target_type",
+            "campaign.brand_guidelines_enabled",
             "campaign.contains_eu_political_advertising",
             "campaign.bidding_strategy_type",
             "campaign.network_settings.target_google_search",
@@ -621,13 +622,19 @@ class OperatorService:
         matched = 0
         for mutation, query in queries:
             result = await self._read_adapter.search(profile, record.customer_id, query)
+            current_item = (
+                result.items[0] if len(result.items) == 1 and not result.truncated else None
+            )
             if mutation.action == "remove":
-                current_item = None
-                is_match = len(result.items) == 0 and not result.truncated
-            else:
-                current_item = (
-                    result.items[0] if len(result.items) == 1 and not result.truncated else None
+                root_key = _DIRECT_FIELDS[mutation.operation_type][0]
+                is_match = not result.truncated and (
+                    len(result.items) == 0
+                    or (
+                        current_item is not None
+                        and current_item.get(root_key, {}).get("status") == "REMOVED"
+                    )
                 )
+            else:
                 is_match = current_item is not None and _matches_expected(
                     current_item,
                     expected=mutation.resource,
@@ -856,12 +863,15 @@ def _matches_expected(
                     return False
             return True
         if isinstance(expected_value, list):
-            if not isinstance(current_value, list) or len(expected_value) != len(current_value):
+            current_list = [] if current_value is None else current_value
+            if not isinstance(current_list, list) or len(expected_value) != len(current_list):
                 return False
             return all(
                 compare(expected_item, current_item)
-                for expected_item, current_item in zip(expected_value, current_value, strict=True)
+                for expected_item, current_item in zip(expected_value, current_list, strict=True)
             )
+        if not isinstance(expected_value, bool) and expected_value in (0, 0.0):
+            return current_value in (None, 0, 0.0, "0", "0.0")
         resolved = (
             temporary_names.get(expected_value, expected_value)
             if temporary_names is not None and isinstance(expected_value, str)
@@ -885,7 +895,7 @@ def _matches_expected(
         if key in strategy_fields:
             if str(root.get("bidding_strategy_type")) != strategy_fields[key]:
                 return False
-            if not value or value in ({"target_cpa_micros": 0}, {"target_roas": 0.0}):
+            if not value:
                 continue
         candidates = (key, normalized) if key.endswith("_") else (key,)
         current_key = next((candidate for candidate in candidates if candidate in root), None)
