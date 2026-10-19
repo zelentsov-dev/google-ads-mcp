@@ -45,7 +45,7 @@ def _contains_generic_secret(content: bytes) -> bool:
         candidate = match.group().rstrip(b"=")
         lowered_candidate = candidate.lower()
         context = content[max(0, match.start() - 40) : match.start()].lower()
-        if any(
+        if lowered_candidate.startswith(b"spdxref-") or any(
             label in context or lowered_candidate.startswith(label + b"=")
             for label in INTEGRITY_LABELS
         ):

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "google-ads-operator-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "A local, security-first MCP server for Google Ads analysis and typed operations."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"

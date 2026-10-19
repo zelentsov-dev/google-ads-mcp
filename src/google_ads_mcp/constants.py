@@ -1,6 +1,6 @@
 from typing import Final
 
-VERSION: Final = "0.2.0"
+VERSION: Final = "0.2.1"
 API_VERSION: Final = "v25"
 GOOGLE_ADS_CLIENT_VERSION: Final = "31.2.0"
 DEFAULT_CONFIG_ENV: Final = "GOOGLE_ADS_MCP_CONFIG"

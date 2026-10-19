@@ -1,4 +1,4 @@
-# Google Ads MCP v0.2.0
+# Google Ads MCP v0.2.1
 
 Safe Operator release for Google Ads API v25.
 
