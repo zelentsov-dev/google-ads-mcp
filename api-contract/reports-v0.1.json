@@ -63,6 +63,44 @@
     },
     {
       "allowedSegments": [
+        "segments.date"
+      ],
+      "campaignTypes": [
+        "MULTI_CHANNEL"
+      ],
+      "description": "App campaign creative asset performance and performance labels.",
+      "modeledConversions": false,
+      "name": "app_asset_performance",
+      "requiresDateRange": true,
+      "resource": "ad_group_ad_asset_view"
+    },
+    {
+      "allowedSegments": [
+        "segments.date"
+      ],
+      "campaignTypes": [
+        "PERFORMANCE_MAX"
+      ],
+      "description": "Performance Max asset group asset performance and status.",
+      "modeledConversions": false,
+      "name": "pmax_asset_performance",
+      "requiresDateRange": true,
+      "resource": "asset_group_asset"
+    },
+    {
+      "allowedSegments": [
+        "segments.date",
+        "segments.device"
+      ],
+      "campaignTypes": [],
+      "description": "Geographic performance by country criterion and location type.",
+      "modeledConversions": false,
+      "name": "geographic_performance",
+      "requiresDateRange": true,
+      "resource": "geographic_view"
+    },
+    {
+      "allowedSegments": [
         "segments.date",
         "segments.device"
       ],

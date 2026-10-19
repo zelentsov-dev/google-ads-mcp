@@ -743,6 +743,30 @@
       ]
     },
     {
+      "name": "ad_update_preview",
+      "description": "Validate and preview status or creative updates for one responsive Search or App ad.",
+      "inputProperties": [
+        "adGroupId",
+        "adId",
+        "customerId",
+        "descriptions",
+        "finalUrl",
+        "headlines",
+        "imageAssets",
+        "policyId",
+        "profile",
+        "status",
+        "youtubeVideoAssets"
+      ],
+      "inputRequired": [
+        "profile",
+        "customerId",
+        "policyId",
+        "adGroupId",
+        "adId"
+      ]
+    },
+    {
       "name": "recommendation_apply_preview",
       "description": "Fail closed unless Google exposes validate_only for this recommendation action.",
       "inputProperties": [

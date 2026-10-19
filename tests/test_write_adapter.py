@@ -236,20 +236,52 @@ def test_forbidden_service_set_is_disjoint() -> None:
 
 def test_validate_error_unsupported_action_and_blank_partial_response() -> None:
     failed_validation = Service(error=RpcError("INVALID_ARGUMENT"))
-    adapter = GoogleAdsWriteAdapter(
-        read_adapter=cast(Any, ReadBoundary(Client(failed_validation)))
-    )
+    adapter = GoogleAdsWriteAdapter(read_adapter=cast(Any, ReadBoundary(Client(failed_validation))))
     with pytest.raises(AdapterError):
         asyncio.run(adapter.validate(_profile(), _plan()))
     assert len(failed_validation.calls) == 1
 
     remove = MutationItem(
         "campaign_operation",
-        cast(Any, "remove"),
+        "remove",
         {"resource_name": "customers/1234567890/campaigns/1"},
     )
     with pytest.raises(SecurityError, match="Remove"):
         GoogleAdsWriteAdapter._validate_plan(_plan((remove,)))
+
+    unsupported_action = MutationItem(
+        "campaign_operation",
+        cast(Any, "delete"),
+        {"resource_name": "customers/1234567890/campaigns/1"},
+    )
+    with pytest.raises(SecurityError, match="Unsupported mutation action"):
+        GoogleAdsWriteAdapter._validate_plan(_plan((unsupported_action,)))
+
+    bad_criterion_remove = MutationItem(
+        "campaign_criterion_operation",
+        "remove",
+        {"resource_name": ""},
+    )
+    with pytest.raises(SecurityError, match="Criterion remove"):
+        GoogleAdsWriteAdapter._validate_plan(_plan((bad_criterion_remove,)))
+
+    valid_criterion_remove = MutationItem(
+        "campaign_criterion_operation",
+        "remove",
+        {"resource_name": "customers/1234567890/campaignCriteria/1~2840"},
+    )
+    remove_service = Service(_response("customers/1234567890/campaignCriteria/1~2840"))
+    remove_adapter = GoogleAdsWriteAdapter(
+        read_adapter=cast(Any, ReadBoundary(Client(remove_service)))
+    )
+    remove_validation = asyncio.run(
+        remove_adapter.validate(_profile(), _plan((valid_criterion_remove,)))
+    )
+    assert remove_validation.valid is True
+    assert (
+        remove_service.calls[0]["request"].mutate_operations[0].campaign_criterion_operation.remove
+        == "customers/1234567890/campaignCriteria/1~2840"
+    )
 
     blank = _response("")
     service = Service(blank)

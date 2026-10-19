@@ -36,6 +36,7 @@ _WRITE_KINDS = frozenset(
         "asset_link",
         "asset_group_create",
         "ad_create",
+        "ad_update",
         "recommendation_apply",
         "recommendation_dismiss",
     }
@@ -170,9 +171,7 @@ class WritePolicy:
                 code="policy_not_approved",
             )
 
-    def enforce_money(
-        self, monetary_delta: dict[str, str | None], after: dict[str, Any]
-    ) -> None:
+    def enforce_money(self, monetary_delta: dict[str, str | None], after: dict[str, Any]) -> None:
         raw_delta = monetary_delta.get("spendMicros")
         if raw_delta is not None:
             absolute = abs(int(raw_delta))
@@ -181,9 +180,7 @@ class WritePolicy:
                     "The monetary change exceeds the policy operation limit",
                     code="policy_limit_exceeded",
                 )
-        budget = after.get("dailyBudgetMicros") or after.get(
-            "currentCampaignDailyBudgetMicros"
-        )
+        budget = after.get("dailyBudgetMicros") or after.get("currentCampaignDailyBudgetMicros")
         if budget is not None and int(str(budget)) > self.limits.max_campaign_daily_budget_micros:
             raise ValidationError(
                 "The requested campaign budget exceeds the policy limit",

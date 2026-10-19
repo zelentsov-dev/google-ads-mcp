@@ -36,6 +36,12 @@ _RESOURCE_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
             "campaign.status",
             "campaign.serving_status",
             "campaign.primary_status",
+            "campaign.primary_status_reasons",
+            "campaign.advertising_channel_type",
+            "campaign.advertising_channel_sub_type",
+            "campaign.app_campaign_setting.app_id",
+            "campaign.app_campaign_setting.app_store",
+            "campaign.app_campaign_setting.bidding_strategy_goal_type",
         ),
     ),
     "budget": (
@@ -59,6 +65,8 @@ _RESOURCE_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
             "campaign.manual_cpc.enhanced_cpc_enabled",
             "campaign.target_cpa.target_cpa_micros",
             "campaign.target_roas.target_roas",
+            "campaign.maximize_conversions.target_cpa_micros",
+            "campaign.maximize_conversion_value.target_roas",
         ),
     ),
     "ad_groups": (
@@ -70,6 +78,7 @@ _RESOURCE_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
             "ad_group.status",
             "ad_group.type",
             "ad_group.cpc_bid_micros",
+            "ad_group.effective_target_cpa_micros",
         ),
     ),
     "ads": (
@@ -81,6 +90,15 @@ _RESOURCE_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
             "ad_group_ad.status",
             "ad_group_ad.ad.type",
             "ad_group_ad.ad.name",
+            "ad_group_ad.ad.final_urls",
+            "ad_group_ad.ad.responsive_search_ad.headlines",
+            "ad_group_ad.ad.responsive_search_ad.descriptions",
+            "ad_group_ad.ad.app_ad.headlines",
+            "ad_group_ad.ad.app_ad.descriptions",
+            "ad_group_ad.ad.app_ad.images",
+            "ad_group_ad.ad.app_ad.youtube_videos",
+            "ad_group_ad.policy_summary.approval_status",
+            "ad_group_ad.policy_summary.review_status",
         ),
     ),
     "assets": (
@@ -91,6 +109,43 @@ _RESOURCE_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
             "campaign_asset.field_type",
             "campaign_asset.status",
             "campaign_asset.primary_status",
+            "asset.id",
+            "asset.name",
+            "asset.type",
+            "asset.text_asset.text",
+        ),
+    ),
+    "app_assets": (
+        "ad_group_ad_asset_view",
+        (
+            "campaign.id",
+            "ad_group.id",
+            "ad_group_ad.ad.id",
+            "ad_group_ad_asset_view.asset",
+            "ad_group_ad_asset_view.field_type",
+            "ad_group_ad_asset_view.performance_label",
+            "ad_group_ad_asset_view.enabled",
+            "asset.id",
+            "asset.name",
+            "asset.type",
+            "asset.text_asset.text",
+            "asset.youtube_video_asset.youtube_video_id",
+            "asset.youtube_video_asset.youtube_video_title",
+        ),
+    ),
+    "asset_group_assets": (
+        "asset_group_asset",
+        (
+            "campaign.id",
+            "asset_group.id",
+            "asset_group_asset.asset",
+            "asset_group_asset.field_type",
+            "asset_group_asset.status",
+            "asset_group_asset.primary_status",
+            "asset.id",
+            "asset.name",
+            "asset.type",
+            "asset.text_asset.text",
         ),
     ),
     "criteria": (
@@ -101,6 +156,25 @@ _RESOURCE_TYPES: dict[str, tuple[str, tuple[str, ...]]] = {
             "campaign_criterion.type",
             "campaign_criterion.status",
             "campaign_criterion.negative",
+            "campaign_criterion.location.geo_target_constant",
+            "campaign_criterion.language.language_constant",
+            "campaign_criterion.keyword.text",
+            "campaign_criterion.keyword.match_type",
+        ),
+    ),
+    "keywords": (
+        "ad_group_criterion",
+        (
+            "campaign.id",
+            "ad_group.id",
+            "ad_group_criterion.criterion_id",
+            "ad_group_criterion.type",
+            "ad_group_criterion.status",
+            "ad_group_criterion.negative",
+            "ad_group_criterion.cpc_bid_micros",
+            "ad_group_criterion.keyword.text",
+            "ad_group_criterion.keyword.match_type",
+            "ad_group_criterion.quality_info.quality_score",
         ),
     ),
     "conversions": (
@@ -121,8 +195,7 @@ def _geo_target_ids(values: Sequence[object]) -> tuple[str, ...]:
             f"geoTargetIds must contain between 1 and {_MAX_GEO_TARGET_IDS} values"
         )
     if any(
-        not isinstance(item, str) or not item.isascii() or not item.isdigit()
-        for item in values
+        not isinstance(item, str) or not item.isascii() or not item.isdigit() for item in values
     ):
         raise ValidationError("geoTargetIds must contain ASCII numeric IDs")
     if len(set(values)) != len(values):
@@ -543,6 +616,16 @@ class GoogleAdsService:
             "campaign_inventory", selected.name, customer, campaign_id, resource_type
         )
         result = None if cursor else await self._adapter.search(selected, customer, query)
+        if result is not None and not result.items and resource_type == "assets":
+            for fallback_type in ("app_assets", "asset_group_assets"):
+                fallback_resource, fallback_fields = _RESOURCE_TYPES[fallback_type]
+                fallback_query = (
+                    f"SELECT {', '.join(fallback_fields)} FROM {fallback_resource} "
+                    f"WHERE campaign.id = {campaign_id} LIMIT 1000"
+                )
+                result = await self._adapter.search(selected, customer, fallback_query)
+                if result.items:
+                    break
         return await self._paged(
             profile=selected,
             customer_id=customer,
@@ -618,7 +701,7 @@ class GoogleAdsService:
         *,
         campaign_ids: list[str] | None = None,
     ) -> ToolResponse:
-        return await self.report_run(
+        response = await self.report_run(
             profile,
             customer_id,
             "asset_performance",
@@ -626,6 +709,25 @@ class GoogleAdsService:
             date_to,
             campaign_ids=campaign_ids,
         )
+        if not response["items"]:
+            response = await self.report_run(
+                profile,
+                customer_id,
+                "app_asset_performance",
+                date_from,
+                date_to,
+                campaign_ids=campaign_ids,
+            )
+        if not response["items"]:
+            response = await self.report_run(
+                profile,
+                customer_id,
+                "pmax_asset_performance",
+                date_from,
+                date_to,
+                campaign_ids=campaign_ids,
+            )
+        return response
 
     async def conversion_goals_list(self, profile: str, customer_id: str) -> ToolResponse:
         selected = self._profile(profile)
@@ -749,9 +851,7 @@ class GoogleAdsService:
         for index, keyword in enumerate(keywords):
             raw_keyword = cast(object, keyword)
             if not isinstance(raw_keyword, dict) or set(raw_keyword) != {"text", "matchType"}:
-                raise ValidationError(
-                    f"keywords[{index}] must contain exactly text and matchType"
-                )
+                raise ValidationError(f"keywords[{index}] must contain exactly text and matchType")
             keyword_map = cast(dict[str, object], raw_keyword)
             text = keyword_map.get("text")
             match_type = keyword_map.get("matchType")

@@ -12,6 +12,6 @@ def test_static_safe_operator_boundary() -> None:
         timeout=10,
         check=True,
     )
-    assert "45 tools" in completed.stdout
-    assert "11 operation types" in completed.stdout
+    assert "46 tools" in completed.stdout
+    assert "12 operation types" in completed.stdout
     assert "13 forbidden services" in completed.stdout

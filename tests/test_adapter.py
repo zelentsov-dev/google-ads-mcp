@@ -350,9 +350,7 @@ def test_adc_and_yaml_keyring_token_sources(
         "load_from_dict",
         lambda config, version=None: loaded.append(config) or yaml_client,
     )
-    yaml_auth = GoogleAdsYamlAuth(
-        type="googleAdsYaml", path=yaml, developer_token_keyring=True
-    )
+    yaml_auth = GoogleAdsYamlAuth(type="googleAdsYaml", path=yaml, developer_token_keyring=True)
     result = GoogleAdsReadAdapter._build_client_with_store(
         _profile(yaml_auth), Secrets("keyring-token")
     )

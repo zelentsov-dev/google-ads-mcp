@@ -200,9 +200,7 @@ def test_cli_onboard_requires_profile_and_keyring(
 @pytest.mark.skipif(
     os.name == "nt", reason="policy writes fail closed without Windows ACL verification"
 )
-def test_cli_policy_lifecycle(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_cli_policy_lifecycle(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     empty = tmp_path / "empty-policies.json"
     main(["--policies", str(empty), "policies", "init"])
     main(["--policies", str(empty), "policies", "validate"])
@@ -327,7 +325,7 @@ def test_black_box_stdio_initialize_and_tools_list(tmp_path: Path) -> None:
     lines, stdout, stderr = _run_stdio_until(config, messages, {1, 2})
     assert {line.get("id") for line in lines} == {1, 2}
     tools = next(line["result"]["tools"] for line in lines if line.get("id") == 2)
-    assert len(tools) == 45
+    assert len(tools) == 46
     assert all(line.startswith("{") for line in stdout.splitlines())
     assert "starting Google Ads MCP" in stderr
 

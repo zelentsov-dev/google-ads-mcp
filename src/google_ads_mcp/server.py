@@ -1066,6 +1066,42 @@ def create_mcp(
         )
 
     @mcp.tool()
+    async def ad_update_preview(
+        profile: str,
+        customerId: str,
+        policyId: str,
+        adGroupId: str,
+        adId: str,
+        status: str | None = None,
+        headlines: list[str] | None = None,
+        descriptions: list[str] | None = None,
+        finalUrl: str | None = None,
+        imageAssets: list[str] | None = None,
+        youtubeVideoAssets: list[str] | None = None,
+    ) -> ToolResponse:
+        """Validate and preview status or creative updates for one responsive Search or App ad."""
+        payload = {
+            "adGroupId": adGroupId,
+            "adId": adId,
+            "status": status,
+            "headlines": headlines,
+            "descriptions": descriptions,
+            "finalUrl": finalUrl,
+            "imageAssets": imageAssets,
+            "youtubeVideoAssets": youtubeVideoAssets,
+        }
+        return await _call(
+            operator.preview,
+            "ad_update",
+            profile,
+            customerId,
+            policyId,
+            payload,
+            profile=profile,
+            customer_id=customerId,
+        )
+
+    @mcp.tool()
     async def recommendation_apply_preview(
         profile: str,
         customerId: str,

@@ -126,9 +126,8 @@ class FakeReadAdapter:
 
     async def search(self, profile: Any, customer_id: str, query: str) -> AdapterSearchResult:
         self.queries.append(query)
-        if (
-            "campaign_budget.amount_micros" in query
-            and ("FROM ad_group " in query or "FROM asset_group " in query)
+        if "campaign_budget.amount_micros" in query and (
+            "FROM ad_group " in query or "FROM asset_group " in query
         ):
             raise AdapterError(
                 "campaign_budget fields are not selectable from child resources",
@@ -187,9 +186,7 @@ class FakeReadAdapter:
                                 "campaign": f"customers/{customer_id}/campaigns/1",
                                 "status": "ENABLED",
                                 "negative": False,
-                                "location": {
-                                    "geo_target_constant": "geoTargetConstants/2840"
-                                },
+                                "location": {"geo_target_constant": "geoTargetConstants/2840"},
                             }
                         },
                     ),
@@ -207,9 +204,7 @@ class FakeReadAdapter:
                                 "campaign": f"customers/{customer_id}/campaigns/1",
                                 "status": "ENABLED",
                                 "negative": False,
-                                "language": {
-                                    "language_constant": "languageConstants/1000"
-                                },
+                                "language": {"language_constant": "languageConstants/1000"},
                             }
                         },
                     ),
@@ -228,9 +223,7 @@ class FakeReadAdapter:
                                 "type": "LOCATION",
                                 "status": "ENABLED",
                                 "negative": False,
-                                "location": {
-                                    "geo_target_constant": "geoTargetConstants/2840"
-                                },
+                                "location": {"geo_target_constant": "geoTargetConstants/2840"},
                             }
                         },
                         {
@@ -242,9 +235,7 @@ class FakeReadAdapter:
                                 "type": "LANGUAGE",
                                 "status": "ENABLED",
                                 "negative": False,
-                                "language": {
-                                    "language_constant": "languageConstants/1000"
-                                },
+                                "language": {"language_constant": "languageConstants/1000"},
                             }
                         },
                     ),
@@ -262,9 +253,7 @@ class FakeReadAdapter:
                             "negative": False,
                             "type": "KEYWORD",
                             "keyword": {"text": "keyword", "match_type": "EXACT"},
-                            "effective_cpc_bid_micros": str(
-                                self.keyword_bid_micros
-                            ),
+                            "effective_cpc_bid_micros": str(self.keyword_bid_micros),
                             "effective_cpc_bid_source": "AD_GROUP_CRITERION",
                         }
                     },
@@ -331,7 +320,7 @@ class FakeReadAdapter:
                             "id": "1",
                             "status": "ENABLED",
                             "cpc_bid_micros": str(self.ad_group_bid_micros),
-                        }
+                        },
                     },
                 ),
                 1,
@@ -692,9 +681,7 @@ def test_spend_affecting_child_previews_reach_validate_only_with_parent_budget(
     operator, read, write, journal, _ = _operator(tmp_path, policy=policy)
     read.status = "PAUSED"
 
-    result = asyncio.run(
-        operator.preview(kind, "operator", "1234567890", "safe", payload)
-    )
+    result = asyncio.run(operator.preview(kind, "operator", "1234567890", "safe", payload))
 
     operation = result["operation"]
     plan = journal.inspect(operation["operationId"]).plan
@@ -742,15 +729,14 @@ def test_campaign_criterion_update_is_rejected_before_validate_only(tmp_path: Pa
         ),
     ],
 )
-def test_child_enable_rejects_active_parent_before_validate_only(
+def test_child_enable_rejects_removed_parent_before_validate_only(
     tmp_path: Path, kind: WriteKind, payload: dict[str, Any]
 ) -> None:
     policy = _policy(permissions=frozenset({kind}), allow_enable=True)
-    operator, _, write, _, _ = _operator(tmp_path, policy=policy)
-    with pytest.raises(ValidationError, match="PAUSED parent"):
-        asyncio.run(
-            operator.preview(kind, "operator", "1234567890", "safe", payload)
-        )
+    operator, read, write, _, _ = _operator(tmp_path, policy=policy)
+    read.status = "REMOVED"
+    with pytest.raises(ValidationError, match="ENABLED or PAUSED parent"):
+        asyncio.run(operator.preview(kind, "operator", "1234567890", "safe", payload))
     assert write.validations == 0
 
 
@@ -1032,9 +1018,7 @@ def test_status_only_child_enable_enforces_authoritative_current_bid(
     read.keyword_bid_micros = 999_999_999
 
     with pytest.raises(BlockedError, match="bid"):
-        asyncio.run(
-            operator.preview(kind, "operator", "1234567890", "safe", payload)
-        )
+        asyncio.run(operator.preview(kind, "operator", "1234567890", "safe", payload))
 
     assert write.validations == 0
 
@@ -1168,9 +1152,7 @@ def test_partial_authoritative_create_targets_cannot_verify_whole_plan(tmp_path:
     operator, _, _, journal, _ = _operator(tmp_path)
 
     class AssetRead(FakeReadAdapter):
-        async def search(
-            self, profile: Any, customer_id: str, query: str
-        ) -> AdapterSearchResult:
+        async def search(self, profile: Any, customer_id: str, query: str) -> AdapterSearchResult:
             if "asset.resource_name" in query and "assets/1" in query:
                 return AdapterSearchResult(
                     (
@@ -1247,9 +1229,7 @@ def test_partial_authoritative_create_targets_cannot_verify_whole_plan(tmp_path:
             ),
         ),
     )
-    readback = asyncio.run(
-        operator._readback(_config().profile("operator"), record, response)
-    )
+    readback = asyncio.run(operator._readback(_config().profile("operator"), record, response))
     assert readback.state == "partial"
     assert len(readback.objects) == 2
 
@@ -1295,9 +1275,7 @@ def test_temporary_update_target_with_unchanged_state_is_not_verified(tmp_path: 
         expires_at=NOW + timedelta(minutes=10),
     )
     record = journal.begin_apply("temporary-update", "temporary-hash", NOW)
-    readback = asyncio.run(
-        operator._readback(_config().profile("operator"), record, response=None)
-    )
+    readback = asyncio.run(operator._readback(_config().profile("operator"), record, response=None))
     assert readback.state == "matched_before"
 
 
@@ -1414,9 +1392,10 @@ def test_operator_policy_math_and_state_resolution_defensive_branches() -> None:
             }
         ]
     }
-    assert OperatorService._aggregate_budget(
-        valid_aggregate, object_index=0, customer_id="1234567890"
-    ) == 100
+    assert (
+        OperatorService._aggregate_budget(valid_aggregate, object_index=0, customer_id="1234567890")
+        == 100
+    )
     for before, object_index in (
         ({}, 0),
         ({"objects": []}, 0),
@@ -1429,6 +1408,7 @@ def test_operator_policy_math_and_state_resolution_defensive_branches() -> None:
                 object_index=object_index,
                 customer_id="1234567890",
             )
+
     def aggregate_row(
         *,
         identifier: str = "1",
@@ -1499,9 +1479,9 @@ def test_operator_policy_math_and_state_resolution_defensive_branches() -> None:
         },
         risk={"spendAffecting": True},
     )
-    assert OperatorService._enforce_policy(policy, bounded).after[
-        "aggregateDailyBudgetMicros"
-    ] == "0"
+    assert (
+        OperatorService._enforce_policy(policy, bounded).after["aggregateDailyBudgetMicros"] == "0"
+    )
     with pytest.raises(BlockedError, match="enable policy allowlist"):
         OperatorService._enforce_policy(
             replace(policy, campaign_ids=frozenset()),
@@ -1511,16 +1491,21 @@ def test_operator_policy_math_and_state_resolution_defensive_branches() -> None:
     matched_before = ReadbackResult(state="matched_before")
     matched_after = ReadbackResult(state="matched_after")
     partial = ReadbackResult(state="partial")
-    assert OperatorService._resolve_state(
-        ApplyResult(state="partial"), None, matched_after
-    ) == "partial"
+    assert (
+        OperatorService._resolve_state(ApplyResult(state="partial"), None, matched_after)
+        == "partial"
+    )
     assert OperatorService._resolve_state(None, None, partial) == "partial"
-    assert OperatorService._resolve_state(
-        None, AdapterError("failed", code="deterministic"), matched_before
-    ) == "failed"
-    assert OperatorService._resolve_state(
-        ApplyResult(state="failed"), None, matched_before
-    ) == "failed"
+    assert (
+        OperatorService._resolve_state(
+            None, AdapterError("failed", code="deterministic"), matched_before
+        )
+        == "failed"
+    )
+    assert (
+        OperatorService._resolve_state(ApplyResult(state="failed"), None, matched_before)
+        == "failed"
+    )
     nested = {"root": [{"child": {"value": 1}}, "ignored"]}
     assert _walk(nested) == [nested, {"child": {"value": 1}}, {"value": 1}]
 
@@ -1557,9 +1542,7 @@ def test_readback_without_direct_targets_is_inconclusive_after_state_drift(
     )
     record = journal.begin_apply("no-targets", "no-targets-hash", NOW)
 
-    readback = asyncio.run(
-        operator._readback(_config().profile("operator"), record, response=None)
-    )
+    readback = asyncio.run(operator._readback(_config().profile("operator"), record, response=None))
 
     assert readback.state == "inconclusive"
 
@@ -1785,8 +1768,59 @@ def test_direct_query_customer_id_and_exact_comparator_branches() -> None:
             "name": "Campaign",
         },
         temporary_names={
-            "customers/1234567890/campaignBudgets/-1": (
-                "customers/1234567890/campaignBudgets/10"
-            )
+            "customers/1234567890/campaignBudgets/-1": ("customers/1234567890/campaignBudgets/10")
         },
     )
+    ad_query = _direct_query("ad_operation", "customers/1234567890/ads/3")
+    assert ad_query is not None
+    assert "WHERE ad_group_ad.ad.resource_name = 'customers/1234567890/ads/3'" in ad_query
+    assert _matches_expected(
+        {
+            "ad_group_ad": {
+                "ad": {
+                    "resource_name": "customers/1234567890/ads/3",
+                    "final_urls": ["https://example.com"],
+                }
+            }
+        },
+        {"final_urls": ["https://example.com"]},
+        operation_type="ad_operation",
+        action="update",
+        update_mask=("final_urls",),
+    )
+
+
+def test_readback_handles_criterion_remove_mutation(tmp_path: Path) -> None:
+    operator, read, _, journal, _ = _operator(tmp_path)
+    preview = _preview(operator)
+    stored = journal.inspect(preview["operation"]["operationId"])
+    plan = replace(
+        stored.plan,
+        items=(
+            MutationItem(
+                "campaign_criterion_operation",
+                "remove",
+                {"resource_name": "customers/1234567890/campaignCriteria/1~9999"},
+                correlation_id="remove-criterion-1",
+            ),
+        ),
+    )
+    record = replace(stored, plan=plan)
+    readback = asyncio.run(
+        operator._readback(
+            operator._profile("operator"),
+            record,
+            ApplyResult(
+                state="applied",
+                items=(
+                    ApplyItemResult(
+                        correlation_id="remove-criterion-1",
+                        status="applied",
+                        resource_name="customers/1234567890/campaignCriteria/1~9999",
+                    ),
+                ),
+            ),
+        )
+    )
+    assert readback.state == "matched_before"
+    assert read.queries

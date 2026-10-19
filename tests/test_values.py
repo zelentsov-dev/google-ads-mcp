@@ -78,6 +78,32 @@ def test_selected_false_enhanced_cpc_remains_authoritative_false() -> None:
     assert normalized == {"campaign": {"manual_cpc": {"enhanced_cpc_enabled": False}}}
 
 
+def test_reserved_protobuf_type_fields_use_gaql_names() -> None:
+    row = GoogleAdsRow()
+    row.ad_group_ad.ad.id = 1
+    row.ad_group_ad.ad.type_ = "RESPONSIVE_SEARCH_AD"
+    row.ad_group_criterion.criterion_id = 2
+    row.ad_group_criterion.type_ = "KEYWORD"
+
+    normalized = normalize_row(
+        row,
+        requested_fields=("ad_group_ad.ad.type", "ad_group_criterion.type"),
+    )
+
+    assert normalized == {
+        "ad_group_ad": {
+            "ad": {
+                "id": "1",
+                "type": "RESPONSIVE_SEARCH_AD",
+            }
+        },
+        "ad_group_criterion": {
+            "criterion_id": "2",
+            "type": "KEYWORD",
+        },
+    }
+
+
 def test_iso_dates_and_ranges() -> None:
     assert parse_iso_date("2026-08-27", field="date") == date(2026, 8, 27)
     assert validate_date_range("2024-01-01", "2024-12-31", max_days=366)

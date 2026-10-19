@@ -68,6 +68,7 @@ _OPERATIONS: dict[str, tuple[str, str, frozenset[str]]] = {
                 "app_campaign_setting",
                 "selective_optimization",
                 "optimization_goal_setting",
+                "brand_guidelines_enabled",
                 "contains_eu_political_advertising",
             }
         ),
@@ -155,6 +156,19 @@ _OPERATIONS: dict[str, tuple[str, str, frozenset[str]]] = {
         "AdGroupAd",
         frozenset({"resource_name", "ad_group", "status", "ad"}),
     ),
+    "ad_operation": (
+        "AdOperation",
+        "Ad",
+        frozenset(
+            {
+                "resource_name",
+                "name",
+                "final_urls",
+                "responsive_search_ad",
+                "app_ad",
+            }
+        ),
+    ),
 }
 
 
@@ -202,14 +216,25 @@ class GoogleAdsWriteAdapter:
                 status="not_supported",
             )
         for item in plan.items:
-            if item.action not in {"create", "update"}:
-                raise SecurityError("Remove operations are not supported")
+            if item.action not in {"create", "update", "remove"}:
+                raise SecurityError("Unsupported mutation action")
+            if item.action == "remove" and item.operation_type not in {
+                "campaign_criterion_operation",
+                "ad_group_criterion_operation",
+            }:
+                raise SecurityError("Remove operations are only supported for criteria")
             definition = _OPERATIONS.get(item.operation_type)
             if definition is None:
                 raise SecurityError("The mutation plan contains a forbidden operation type")
             unknown = set(item.resource) - definition[2]
             if unknown:
                 raise SecurityError("The mutation plan contains a forbidden resource field")
+            if item.action == "remove" and (
+                set(item.resource) != {"resource_name"}
+                or not isinstance(item.resource.get("resource_name"), str)
+                or not item.resource["resource_name"]
+            ):
+                raise SecurityError("Criterion remove operations require only a resource_name")
             if item.action != "update" and item.update_mask:
                 raise SecurityError("Only update operations may contain an update mask")
             if item.action == "update" and not item.update_mask:
@@ -225,10 +250,13 @@ class GoogleAdsWriteAdapter:
     def _mutate_operation(cls, client: Any, item: MutationItem) -> Any:
         operation_type, resource_type, _ = _OPERATIONS[item.operation_type]
         operation = client.get_type(operation_type, version=API_VERSION)
-        resource = cls._resource_message(client, resource_type, item)
-        client.copy_from(getattr(operation, item.action), resource)
-        if item.update_mask:
-            operation.update_mask.paths.extend(item.update_mask)
+        if item.action == "remove":
+            operation.remove = str(item.resource["resource_name"])
+        else:
+            resource = cls._resource_message(client, resource_type, item)
+            client.copy_from(getattr(operation, item.action), resource)
+            if item.update_mask:
+                operation.update_mask.paths.extend(item.update_mask)
         mutate = client.get_type("MutateOperation", version=API_VERSION)
         client.copy_from(getattr(mutate, item.operation_type), operation)
         return mutate

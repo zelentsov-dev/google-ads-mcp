@@ -283,12 +283,12 @@ Use reports_catalog, then run one bounded report with an explicit completed date
 Use resource_metadata for campaign.start_date_time and campaign.end_date_time.
 Use change_events_query and confirm no change is attributable to this MCP session.
 Use server_info and confirm v0.2.0, 22 read/analytics tools, ten-minute receipts, and runtime write opt-in.
-List the Google Ads MCP tools and confirm there are exactly 45. Confirm no tool accepts a raw protobuf, mutate payload, Google service name, billing/user operation, upload, delete, or scheduler request.
+List the Google Ads MCP tools and confirm there are exactly 46. Confirm no tool accepts a raw protobuf, mutate payload, Google service name, billing/user operation, upload, delete, or scheduler request.
 ```
 
 Repeat the auth, discovery, hierarchy, inventory, report, and no-change checks with `test-operator` and `TEST_CLIENT_CUSTOMER_ID`. Empty serving metrics are expected on a test account.
 
-Automated verification is not live-account acceptance. The exact release SHA must separately pass the [live-account, production-read-only, plugin, CI, and security gates](docs/acceptance.md). Google test accounts remain the recommended default; the documented v0.2.0 production-only exception is owner-approved and must be labeled as such.
+Automated verification is not live-account acceptance. The exact release SHA must separately pass the [live-account, plugin, CI, and security gates](docs/acceptance.md). Google test accounts remain the recommended default; a production-only verification flow is owner-approved and must be labeled as such.
 
 ## Enable the Safe Operator on the isolated test account
 
@@ -326,7 +326,8 @@ Edit `~/.config/google-ads-mcp/write-policies.json`. Monetary limits have no aut
         "asset_create",
         "asset_link",
         "asset_group_create",
-        "ad_create"
+        "ad_create",
+        "ad_update"
       ],
       "allowCampaignEnable": false,
       "campaignIds": [],
@@ -349,7 +350,7 @@ Edit `~/.config/google-ads-mcp/write-policies.json`. Monetary limits have no aut
 
 Replace `USD` with the exact `account_health` currency and replace the customer placeholder with ten digits. Keep `campaignIds` empty while enable is forbidden; an enable-capable pilot policy must list only its explicitly approved campaign IDs. Validate and approve the unchanged policy for 30 days:
 
-`criterion_update_preview` is intentionally limited to positive ad-group keywords. Campaign location and language criteria cannot be changed through this generic route; use the atomic, one-time `campaign_targeting_preview` while the campaign is `PAUSED`. Enabling a paused ad group or keyword binds its authoritative current/effective CPC into the preview and checks it against `maxBidMicros`. Bidding-strategy changes also require a `PAUSED` campaign, and policy schema v1 always rejects Enhanced CPC.
+`criterion_update_preview` is intentionally limited to positive ad-group keywords. Campaign location and language criteria cannot be changed through this generic route; use `campaign_targeting_preview` to atomically reconcile positive location/language criteria (retaining matching criteria, removing stale positive criteria, and adding new ones while preserving negative criteria) and enforce presence-only geo targeting. Enabling a paused ad group or keyword binds its authoritative current/effective CPC into the preview and checks it against `maxBidMicros`. `campaign_bidding_preview` supports `MANUAL_CPC` (with Enhanced CPC disabled), `TARGET_CPA`, `MAXIMIZE_CONVERSIONS`, `MAXIMIZE_CONVERSION_VALUE`, and `TARGET_ROAS`. `ad_update_preview` updates ad-group-ad status and/or mutable creative fields (`RESPONSIVE_SEARCH_AD` and `APP_AD`).
 
 ```bash
 chmod 600 ~/.config/google-ads-mcp/write-policies.json
@@ -444,7 +445,7 @@ google-ads-mcp serve --stdio [--allow-writes]
 
 ## MCP tools
 
-The fixed v0.2.0 surface contains 45 tools:
+The fixed v0.2.0 surface contains 46 tools:
 
 ```text
 # Original 13 reads
@@ -463,7 +464,7 @@ asset_performance_report  conversion_goals_list
 recommendations_list      keyword_ideas
 forecast_run
 
-# Nineteen typed write previews
+# Twenty typed write previews
 search_campaign_create_preview
 performance_max_campaign_create_preview
 app_campaign_create_preview
@@ -474,7 +475,8 @@ ad_group_create_preview   ad_group_update_preview
 keyword_create_preview    negative_keyword_create_preview
 criterion_update_preview  asset_create_preview
 asset_link_preview        asset_group_create_preview
-ad_create_preview         recommendation_apply_preview
+ad_create_preview         ad_update_preview
+recommendation_apply_preview
 recommendation_dismiss_preview
 
 # The only operation interfaces

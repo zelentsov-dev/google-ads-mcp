@@ -379,9 +379,7 @@ def test_invalid_policy_root_and_item(document: object, message: str, tmp_path: 
         ("approvedAt", "2026-08-28T12:00:00", "time zone"),
     ],
 )
-def test_additional_policy_guards(
-    field: str, value: object, message: str, tmp_path: Path
-) -> None:
+def test_additional_policy_guards(field: str, value: object, message: str, tmp_path: Path) -> None:
     document = _policy_document()
     if field == "profile":
         document["policies"][0][field] = value
@@ -622,9 +620,7 @@ def test_state_path_resolution(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert resolve_state_dir("relative-state").is_absolute()
 
 
-def test_journal_windows_write_guard(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_journal_windows_write_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = tmp_path / "windows-state"
     monkeypatch.setattr(journal_module.os, "name", "nt")
     with pytest.raises(SecurityError, match="Windows ACL"):
@@ -714,6 +710,7 @@ def test_journal_secure_open_identity_failure_branches(
             journal_module._open_journal(path, create=False)
 
     with monkeypatch.context() as patch:
+
         def mismatched_stat(*args: Any, **kwargs: Any) -> os.stat_result:
             values = list(real_stat(*args, **kwargs))
             values[1] = int(values[1]) + 1
@@ -749,9 +746,7 @@ def test_journal_migrates_integrity_columns_and_blocks_cross_key_apply(tmp_path:
         connection.execute("ALTER TABLE operations DROP COLUMN policy_fingerprint")
     migrated = OperationJournal(state)
     with sqlite3.connect(migrated.path) as connection:
-        columns = {
-            str(row[1]) for row in connection.execute("PRAGMA table_info(operations)")
-        }
+        columns = {str(row[1]) for row in connection.execute("PRAGMA table_info(operations)")}
     assert {"plan_digest", "validation_digest", "policy_fingerprint"} <= columns
 
     first = _plan("campaign:1")

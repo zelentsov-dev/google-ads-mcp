@@ -30,6 +30,8 @@ def enum_value(value: object, recognized_values: set[str]) -> dict[str, object]:
 
 
 def _snake_key(key: str) -> str:
+    if key == "type_":
+        return "type"
     return key
 
 

@@ -165,9 +165,7 @@ def load_or_create_installation_key(path: Path) -> bytes:
         descriptor = os.open(path, flags, 0o600)
     except FileExistsError:
         try:
-            descriptor = os.open(
-                path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow
-            )
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | nofollow)
         except OSError as exc:
             raise SecurityError("The installation key could not be opened securely") from exc
     except OSError as exc:
