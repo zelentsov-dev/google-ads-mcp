@@ -30,15 +30,52 @@ jobs:
           version: "0.11.13"
           enable-cache: true
       - run: uv sync --frozen --all-groups
-      - run: uv run --frozen ruff check .
-      - run: uv run --frozen pyright --pythonplatform Linux
-      - run: uv run --frozen pyright --pythonplatform Darwin
-      - run: uv run --frozen pyright --pythonplatform Windows
+      - name: Run static analysis and contract validation in parallel
+        run: |
+          set -euo pipefail
+          LOG_DIR="$RUNNER_TEMP/preflight-logs"
+          mkdir -p "$LOG_DIR"
+          failed=0
+          wait_wave() {
+            local i name
+            for i in "${!wave_pids[@]}"; do
+              name="${wave_names[$i]}"
+              if wait "${wave_pids[$i]}"; then
+                echo "::group::[PASS] $name"
+                cat "$LOG_DIR/$name.log"
+                echo "::endgroup::"
+              else
+                echo "::error::$name check failed"
+                cat "$LOG_DIR/$name.log"
+                failed=1
+              fi
+            done
+          }
+          wave_names=(ruff pyright-linux pyright-darwin pyright-windows)
+          wave_pids=()
+          uv run --frozen ruff check . >"$LOG_DIR/ruff.log" 2>&1 &
+          wave_pids+=($!)
+          uv run --frozen pyright --pythonplatform Linux >"$LOG_DIR/pyright-linux.log" 2>&1 &
+          wave_pids+=($!)
+          uv run --frozen pyright --pythonplatform Darwin >"$LOG_DIR/pyright-darwin.log" 2>&1 &
+          wave_pids+=($!)
+          uv run --frozen pyright --pythonplatform Windows >"$LOG_DIR/pyright-windows.log" 2>&1 &
+          wave_pids+=($!)
+          wait_wave
+
+          wave_names=(validate-read-only validate-gaql-templates validate-manifests)
+          wave_pids=()
+          uv run --frozen python scripts/validate_read_only.py >"$LOG_DIR/validate-read-only.log" 2>&1 &
+          wave_pids+=($!)
+          uv run --frozen python scripts/validate_gaql_templates.py >"$LOG_DIR/validate-gaql-templates.log" 2>&1 &
+          wave_pids+=($!)
+          uv run --frozen python scripts/validate_manifests.py >"$LOG_DIR/validate-manifests.log" 2>&1 &
+          wave_pids+=($!)
+          wait_wave
+
+          exit "$failed"
       - run: uv run --frozen pytest
       - run: uv run --frozen python scripts/verify_critical_coverage.py
-      - run: uv run --frozen python scripts/validate_read_only.py
-      - run: uv run --frozen python scripts/validate_gaql_templates.py
-      - run: uv run --frozen python scripts/validate_manifests.py
 
   compatibility:
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
@@ -74,7 +111,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    needs: [preflight, compatibility]
+    needs: [preflight]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
